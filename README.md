@@ -1,0 +1,137 @@
+# RCKeys
+
+小米蓝牙遥控器 2 Pro（RC003）的 macOS 按键自定义工具。**纯按键，不含语音。**
+
+把 13 个物理键映射成任何 Mac 动作：快捷键、媒体键、鼠标点击、打开 App、shell 命令；
+每键支持单击 / 长按 / 双击 / 长按连发四种触发。菜单栏常驻 + 可视化配置界面
+（遥控器实拍图点选按键 + 芯片组合 + 真键盘录制）。
+
+原生 Swift，零第三方依赖，Command Line Tools 即可构建。
+
+## 架构（每一环都经 macOS 26 + RC003 真机验证）
+
+```
+RC003 ──BLE──▶ macOS
+  ├─ ① hidutil 设备级哑化：12 键映射到键盘页 usage 0（No Event）
+  │      系统对这台设备零反应（含 Secure Input 期间——没有系统事件就无所谓泄漏）
+  │      --matching 限定 VID 0x2717 / PID 0x32B8，真键盘完全不受影响
+  │      蓝牙每次重连后自动重新应用（registry 实例会变）
+  └─ ② IOHID 纯监听（原始报告回调）→ 手势引擎 → CGEvent 注入
+         无 CGEventTap、无时间窗抑制器、无 seize（macOS 26 已封死，见下）
+```
+
+与同类方案的区别：不拦截系统事件（哑化让事件根本不产生），所以不存在
+抑制器误伤实体键盘、Secure Input 泄漏、退出残留乱键这类问题——残留的最坏表现
+只是遥控器没反应，`rckeys --fix` 一键恢复。
+
+## 快速开始
+
+```bash
+./build.sh              # 构建 + 自检
+.build/rckeys --test    # 12 秒试运行：应用映射、解码打印按键、自动恢复
+.build/rckeys           # 菜单栏常驻（首次请求两项权限）
+.build/rckeys --fix     # 异常退出后清理残留映射
+```
+
+| 权限 | 用途 |
+|---|---|
+| 输入监控 | IOHID 读取遥控器按键 |
+| 辅助功能 | CGEvent 注入动作 |
+
+菜单栏：`◉` 接管中 / `○` 等待遥控器 / `⏸` 已暂停。菜单里有
+**配置界面…**、暂停/恢复、重载配置、清理映射并退出。
+
+**不要与其他接管工具（Remote Mic 等）同时运行。**
+
+## 可视化配置
+
+菜单栏 → 配置界面…（⌘,）：
+
+- 左侧遥控器实拍图，点选任意按键（选中/悬停高亮）；
+- 右侧编辑该键的四个触发位（单击/长按/双击/连发）：类型选择器 + 参数；
+- 按键动作支持**芯片组合**（修饰键 + 常用键点选或拖拽拼装）与**真键盘录制**
+  （按住单个修饰键 0.7 秒 = 录为单修饰键动作，适配「长按 fn 说话」类输入法）；
+- 打开 App 动作用文件选择器从 /Applications 里挑；
+- 保存即热生效，无需重启。
+
+配置文件：`~/Library/Application Support/RCKeys/config.json`（保存自动热加载）。
+
+```jsonc
+{
+  "settings": { "holdMs": 350, "doubleMs": 250, "repeatMs": 100, "repeatDelayMs": 350 },
+  "keys": {
+    "up":     { "tap": {"type":"key","combo":"arrowup"}, "repeat": {"type":"key","combo":"arrowup"} },
+    "back":   { "tap": {"type":"key","combo":"delete"}, "hold": {"type":"key","combo":"esc"} },
+    "tv":     { "tap": {"type":"key","combo":"cmd+tab"}, "hold": {"type":"key","combo":"cmd+shift+tab"} },
+    "volup":  { "tap": {"type":"media","name":"volume_up"}, "repeat": {"type":"media","name":"volume_up"} },
+    "menu":   { "tap": {"type":"mouse","name":"right"} },
+    "power":  { "tap": {"type":"key","combo":"ctrl+cmd+q"},
+                "hold": {"type":"shell","command":"pmset displaysleepnow"} },
+    "voice":  { "hold": {"type":"key","combo":"fn"} }   // 长按=按住 fn（自动松开）
+  }
+}
+```
+
+- 键名：`up down left right ok back home menu tv power volup voldown voice`
+- 触发：`tap`（未配 double 时零延迟）/ `hold` / `repeat`（连发，与 hold 互斥）/ `double`
+- 动作：`key`（combo：`ctrl+cmd+q`、`arrowup`、`f5`、裸修饰键 `fn`…）/ `media`
+  （volume_up/down、mute、brightness、play、next、prev）/ `mouse`（left/right）/
+  `open`（App 名）/ `shell` / `none`
+- `hold` 配置为裸修饰键时自动变为**按住语义**：触发时按下、松手时释放，
+  断连/暂停自动补释放，不会卡键。
+
+## 默认键位
+
+| 键 | 单击 | 长按 |
+|---|---|---|
+| 方向 | 方向键 | 连发 |
+| OK | 回车 | — |
+| 返回 | 删除 | Esc |
+| 主页 | 调度中心 | Ctrl+↑ |
+| 菜单 | 鼠标右键 | — |
+| TV | Cmd+Tab | Cmd+Shift+Tab |
+| 音量± | 音量（OSD） | 连发 |
+| 电源 | 锁屏 | 屏幕睡眠 |
+| 语音 | 无动作（自配，常见：长按=fn） | — |
+
+## 已知发现（对同类项目有复用价值）
+
+以下均为 macOS 26 + RC003（固件 2671）真机实测，探针源码见 `probes/`：
+
+1. **seize 被系统拒绝**：输入监控权限齐备时，`IOHIDDeviceOpen(kIOHIDOptionsTypeSeizeDevice)`
+   仍返回 `kIOReturnNotPrivileged`（0xE00002C1）。macOS 26 上用户态独占蓝牙键盘不可行，
+   「seize 优先、失败降级」的代码在新系统永远跑在降级分支。
+2. **macOS 26 媒体键事件编码变更**：NX_SYSDEFINED(subtype 8) 的 `data1`
+   需为 `键码<<16 | 状态<<8`（状态 0xA 按下/0xB 释放）。流传已久的老配方
+   `状态<<8 | 键码` 在 26 上键码落入被忽略字段，**所有媒体键都会变成音量加**
+   （音量减、静音全部失效）。已用系统音量读数做前后对照验证（见 Actions.postNX 注释）。
+3. **哑化不影响监听**：UserKeyMapping 映射到 usage 0 后，IOHID 的原始报告回调与
+   值回调仍收到**原始 usage**——「内核哑化 + 纯监听」链路完整可用。
+4. RC003 按键报告格式：`reportID(1B) + N×小端 u16 usage 槽`（实测 7 字节 / 3 槽）；
+   值回调中存在 usage 0xFFFFFFFF 噪声元素需过滤；返回键 0xF1 超出键盘页标准范围，
+   系统天然不处理、hidutil 不接受映射，无需哑化。
+5. RC003 身份信息：GATT 暴露 `180F/180A/ATVV(AB5E0001)/8A7A0001(私有)/01BF/FE59(Nordic
+   Secure DFU)`；Device Information 为 Manufacturer `MIOM` / Model `RC003` /
+   HW `V2.0` / FW `2671` / SW `A.7.0.6`。Type-C 为纯充电口（USB 树零枚举）。
+
+## probes/（研究探针）
+
+| 工具 | 用途 |
+|---|---|
+| `gattdump.swift` | 全 GATT 服务/特征枚举 + 只读 dump（JSON 存档） |
+| `seizetest.swift` | seize 可行性探针（含 ReportDescriptor 抓取） |
+| `duallisten.swift` | 双通道监听：验证哑化后原始报告层与值回调层是否存活 |
+
+均为独立 swift 单文件，`swiftc -O xxx.swift -o xxx` 编译，只读不写设备。
+
+## 故障排查
+
+- **遥控器没反应**：菜单栏是否 `◉`；跑 `--fix`；检查两项权限。
+- **按键有动作但系统也在动**：哑化未生效（重连竞态）——暂停再恢复一次。
+- **fn 松开弹表情选择**：系统设置 → 键盘 → 「按下 🌐 键时」→「什么都不做」。
+
+## 许可与致谢
+
+代码 MIT（LICENSE）；`Resources/RC003-remote-photo.png` 与热点坐标取自
+[HD838A/remote-mic-app](https://github.com/HD838A/remote-mic-app)（GPL-3.0），
+详见 THIRD_PARTY_NOTICES.md。
