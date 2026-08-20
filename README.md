@@ -87,7 +87,8 @@ RC003 ──BLE──▶ macOS
 ```
 
 - 键名：`up down left right ok back home menu tv power volup voldown voice`
-- 触发：`tap`（未配 double 时零延迟）/ `hold` / `repeat`（连发，与 hold 互斥）/ `double`
+- 触发：`tap`（未配 double 时零延迟；按压超过长按判定的松手不会触发单击——
+  算长按）/ `hold` / `repeat`（连发，与 hold 互斥）/ `double`
 - 动作：`key`（combo：`ctrl+cmd+q`、`arrowup`、`f5`、裸修饰键 `fn`…）/ `media`
   （volume_up/down、mute、brightness、play、next、prev）/ `mouse`（left/right）/
   `open`（选择后存 bundle id，App 改名/更新不受影响；旧配置的 App 名兼容）/ `shell` / `none`

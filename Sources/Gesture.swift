@@ -12,6 +12,7 @@ final class GestureEngine {
 
     private final class St {
         var down = false
+        var downAt: DispatchTime?
         var holdFired = false
         var holdTask: DispatchWorkItem?
         var repeatTask: DispatchWorkItem?
@@ -23,7 +24,7 @@ final class GestureEngine {
     var configs: [RemoteKey: KeyConfig]
     /// kind: tap / hold / repeat / double
     var fire: (Action, RemoteKey, String) -> Void
-    /// 系统保留手势（双击菜单 = 呼出设置）：命中时走此回调，不执行用户配置的动作
+    /// 系统保留手势（长按菜单 = 呼出设置）：命中时走此回调，不执行用户配置的动作
     var onSystemGesture: ((RemoteKey, String) -> Void)?
 
     /// hold 配置为裸修饰键（如 fn）时进入"按住"模式：holdReached 发 down，keyUp 发 up
@@ -57,6 +58,7 @@ final class GestureEngine {
         let s = state(k)
         guard !s.down else { return }
         s.down = true
+        s.downAt = DispatchTime.now()
         s.holdFired = false
         s.tapTask?.cancel(); s.tapTask = nil
 
@@ -120,6 +122,15 @@ final class GestureEngine {
         s.holdTask?.cancel(); s.holdTask = nil
         s.repeatTask?.cancel(); s.repeatTask = nil
         guard !s.holdFired else { return }
+
+        // 按压时长 ≥ 长按判定：这就是一次"长按"（无论是否配置长按动作、
+        // 甚至长按位为空），不回退触发单击、也不计入双击——与手感设置
+        // "超过该时长算长按"的语义严格一致
+        if let downAt = s.downAt, msBetween(downAt, DispatchTime.now()) >= timings.holdMs {
+            s.downAt = nil
+            return
+        }
+        s.downAt = nil
 
         // 双击判定：只影响配置了 double 的键（其余键 tap 零延迟直发）
         if configs[k]?.double != nil {
