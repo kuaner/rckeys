@@ -2,12 +2,12 @@ import Foundation
 
 /// 版本单一来源：打包构建读 Info.plist（build_app.sh 注入）；
 /// 开发构建回退硬编码（与 build_app.sh 的 VERSION 默认值保持同步）
-enum AppInfo {
-    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.2.2"
+public enum AppInfo {
+    public static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.2.2"
 }
 
 // 13 个逻辑键（与 RC003 的 HID usage 对应关系见 HID.swift）
-enum RemoteKey: String, CaseIterable {
+public enum RemoteKey: String, CaseIterable, Sendable {
     case up, down, left, right, ok
     case back, home, menu, tv, power
     case volUp = "volup", volDown = "voldown"
@@ -15,24 +15,24 @@ enum RemoteKey: String, CaseIterable {
 }
 
 // 单个动作。type: key | media | open | shell | mouse | none
-struct Action: Codable, Equatable {
-    var type: String
-    var combo: String?     // type=key: "ctrl+cmd+q" / "arrowup" / "cmd"
-    var name: String?      // type=media: volume_up…; type=open: App 名（显示用）; type=mouse: right/left
-    var command: String?   // type=shell: 命令; type=open: bundle id（open -b 优先，缺省回退 open -a name）
+public struct Action: Codable, Equatable, Sendable {
+    public var type: String
+    public var combo: String?     // type=key: "ctrl+cmd+q" / "arrowup" / "cmd"
+    public var name: String?      // type=media: volume_up…; type=open: App 名（显示用）; type=mouse: right/left
+    public var command: String?   // type=shell: 命令; type=open: bundle id（open -b 优先，缺省回退 open -a name）
 
-    static func key(_ combo: String) -> Action { Action(type: "key", combo: combo) }
-    static func media(_ name: String) -> Action { Action(type: "media", name: name) }
-    static let none = Action(type: "none")
+    public static func key(_ combo: String) -> Action { Action(type: "key", combo: combo) }
+    public static func media(_ name: String) -> Action { Action(type: "media", name: name) }
+    public static let none = Action(type: "none")
 }
 
 // 每键触发配置：tap 即时（未配 double 时零延迟）、hold 长按、repeat 长按连发、double 双击。
 // hold 与 repeat 互斥，同时配置时 hold 优先。
-struct KeyConfig: Codable, Equatable {
-    var tap: Action?
-    var hold: Action?
-    var double: Action?
-    var repeatAction: Action?
+public struct KeyConfig: Codable, Equatable, Sendable {
+    public var tap: Action?
+    public var hold: Action?
+    public var double: Action?
+    public var repeatAction: Action?
 
     enum CodingKeys: String, CodingKey {
         case tap, hold, double
@@ -40,21 +40,21 @@ struct KeyConfig: Codable, Equatable {
     }
 }
 
-struct Settings: Codable, Equatable {
+public struct Settings: Codable, Equatable, Sendable {
     var holdMs: Int = 350
     var doubleMs: Int = 250   // 双击判定窗口（可调 150-800）
     var repeatMs: Int = 100
     var repeatDelayMs: Int = 350
 }
 
-struct Config: Codable, Equatable {
-    var settings = Settings()
-    var keys: [String: KeyConfig] = [:]
+public struct Config: Codable, Equatable, Sendable {
+    public var settings = Settings()
+    public var keys: [String: KeyConfig] = [:]
 
-    static let configDir = FileManager.default
+    public static let configDir = FileManager.default
         .urls(for: .applicationSupportDirectory, in: .userDomainMask)[0]
         .appendingPathComponent("RCKeys", isDirectory: true)
-    static var configURL: URL { configDir.appendingPathComponent("config.json") }
+    public static var configURL: URL { configDir.appendingPathComponent("config.json") }
 
     // 出厂默认：行为贴近原生遥控器，全部可改
     static func defaultConfig() -> Config {
@@ -78,7 +78,7 @@ struct Config: Codable, Equatable {
         return c
     }
 
-    static func loadOrDefault() -> (Config, created: Bool) {
+    public static func loadOrDefault() -> (Config, created: Bool) {
         let url = configURL
         if let data = try? Data(contentsOf: url),
            let cfg = try? JSONDecoder().decode(Config.self, from: data) {
@@ -92,7 +92,7 @@ struct Config: Codable, Equatable {
         return (cfg, true)
     }
 
-    static func reload() -> Config? {
+    public static func reload() -> Config? {
         guard let data = try? Data(contentsOf: configURL) else { return nil }
         return try? JSONDecoder().decode(Config.self, from: data)
     }

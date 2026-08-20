@@ -4,28 +4,29 @@ import Foundation
 /// 系统已哑化 → 设备不产生自动重复，连发完全由本引擎的定时器驱动。
 /// 时钟可注入（Scheduler）：生产用主队列真实时钟；测试注入虚拟时钟确定性推进
 /// （见 EngineTests.swift，--self-test 覆盖边缘用例）。
-final class GestureEngine {
-    struct Timings {
+public final class GestureEngine: @unchecked Sendable {
+    public struct Timings {
         var holdMs: Int
         var doubleMs: Int
         var repeatMs: Int
         var repeatDelayMs: Int
     }
 
-    /// 可注入调度器：当前时间 + 可取消的延迟执行
-    struct Scheduler {
-        struct Ticket { let cancel: () -> Void }
-        let now: () -> DispatchTime
-        let after: (_ ms: Int, _ fire: @escaping () -> Void) -> Ticket
+    /// 可注入调度器：当前时间 + 可取消的延迟执行。
+    /// fire 经 Task 盒传递（闭包属性类型的参数无法声明 @escaping，
+    /// 故由 schedule() 方法装箱——方法声明的参数可以）。
+    public struct Scheduler: Sendable {
+        public struct Ticket: Sendable { let cancel: @Sendable () -> Void }
+        public struct Task: Sendable { let call: @Sendable () -> Void }
+        public let now: @Sendable () -> DispatchTime
+        public let after: @Sendable (_ ms: Int, _ task: Task) -> Ticket
+
+        public func schedule(_ ms: Int, _ fire: @escaping @Sendable () -> Void) -> Ticket {
+            after(ms, Task(call: fire))
+        }
 
         /// 生产时钟：主队列真实时间
-        static let main = Scheduler(
-            now: { DispatchTime.now() },
-            after: { ms, fire in
-                let item = DispatchWorkItem(block: fire)
-                DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms), execute: item)
-                return Ticket { item.cancel() }
-            })
+        public static let main = Scheduler(now: mainNow, after: mainAfter)
     }
 
     private final class St {
@@ -38,14 +39,14 @@ final class GestureEngine {
         var lastTapAt: DispatchTime?
     }
 
-    var timings: Timings
-    var configs: [RemoteKey: KeyConfig]
+    public var timings: Timings
+    public var configs: [RemoteKey: KeyConfig]
     /// kind: tap / hold / repeat / double
-    var fire: (Action, RemoteKey, String) -> Void
+    public var fire: (Action, RemoteKey, String) -> Void
     /// 系统保留手势（长按菜单 = 呼出设置）：命中时走此回调，不执行用户配置的动作
-    var onSystemGesture: ((RemoteKey, String) -> Void)?
+    public var onSystemGesture: (@Sendable (RemoteKey, String) -> Void)?
     /// 裸修饰键按压（注入点：测试替换以免真实注入事件）
-    var pressModifier: (String, Bool) -> Void = Actions.pressModifier
+    public var pressModifier: @Sendable (String, Bool) -> Void = Actions.pressModifier
 
     /// hold 配置为裸修饰键（如 fn）时进入"按住"模式：holdReached 发 down，keyUp 发 up
     private var heldModifiers: [RemoteKey: String] = [:]
@@ -53,8 +54,8 @@ final class GestureEngine {
     private var st: [RemoteKey: St] = [:]
     let clock: Scheduler
 
-    init(config: Config, fire: @escaping (Action, RemoteKey, String) -> Void,
-         clock: Scheduler = .main) {
+    public init(config: Config, fire: @escaping @Sendable (Action, RemoteKey, String) -> Void,
+                clock: Scheduler = .main) {
         self.timings = Timings(holdMs: config.settings.holdMs,
                                doubleMs: config.settings.doubleMs,
                                repeatMs: config.settings.repeatMs,
@@ -64,7 +65,7 @@ final class GestureEngine {
         self.clock = clock
     }
 
-    func updateConfig(_ config: Config) {
+    public func updateConfig(_ config: Config) {
         timings = Timings(holdMs: config.settings.holdMs,
                           doubleMs: config.settings.doubleMs,
                           repeatMs: config.settings.repeatMs,
@@ -77,7 +78,7 @@ final class GestureEngine {
         let s = St(); st[k] = s; return s
     }
 
-    func keyDown(_ k: RemoteKey) {
+    public func keyDown(_ k: RemoteKey) {
         let s = state(k)
         guard !s.down else { return }
         s.down = true
@@ -92,7 +93,7 @@ final class GestureEngine {
             : (cfg?.hold != nil) ? timings.holdMs
             : ((cfg?.repeatAction != nil) ? timings.repeatDelayMs : -1)
         guard holdDelay > 0 else { return }
-        s.holdTask = clock.after(holdDelay) { [weak self] in self?.holdReached(k) }
+        s.holdTask = clock.schedule(holdDelay) { [weak self] in self?.holdReached(k) }
     }
 
     private func holdReached(_ k: RemoteKey) {
@@ -121,7 +122,7 @@ final class GestureEngine {
     private func scheduleRepeat(_ k: RemoteKey, _ a: Action) {
         let s = state(k)
         guard s.down, s.holdFired else { return }
-        s.repeatTask = clock.after(timings.repeatMs) { [weak self] in
+        s.repeatTask = clock.schedule(timings.repeatMs) { [weak self] in
             guard let self else { return }
             let s = self.state(k)
             guard s.down, s.holdFired else { return }
@@ -130,7 +131,7 @@ final class GestureEngine {
         }
     }
 
-    func keyUp(_ k: RemoteKey) {
+    public func keyUp(_ k: RemoteKey) {
         let s = state(k)
         guard s.down else { return }
         s.down = false
@@ -161,7 +162,7 @@ final class GestureEngine {
                 return
             }
             s.lastTapAt = t
-            s.tapTask = clock.after(timings.doubleMs) { [weak self] in
+            s.tapTask = clock.schedule(timings.doubleMs) { [weak self] in
                 guard let self else { return }
                 let s = self.state(k)
                 guard !s.down, s.lastTapAt != nil else { return }
@@ -174,7 +175,7 @@ final class GestureEngine {
     }
 
     /// 设备断开/接管暂停时清空全部按键状态与定时器，并释放按住中的修饰键
-    func reset() {
+    public func reset() {
         for (k, combo) in heldModifiers {
             pressModifier(combo, false)
             heldModifiers[k] = nil
@@ -196,4 +197,20 @@ private extension Dictionary where Key == String, Value == KeyConfig {
         for (k, v) in self { if let rk = transform(k) { out[rk] = v } }
         return out
     }
+}
+
+
+private func mainNow() -> DispatchTime { DispatchTime.now() }
+
+/// DispatchWorkItem 非 Sendable：主队列限定盒子
+private final class WorkItemBox: @unchecked Sendable {
+    let item: DispatchWorkItem
+    init(_ item: DispatchWorkItem) { self.item = item }
+}
+
+private func mainAfter(_ ms: Int, _ task: GestureEngine.Scheduler.Task) -> GestureEngine.Scheduler.Ticket {
+    let item = DispatchWorkItem(block: task.call)
+    DispatchQueue.main.asyncAfter(deadline: .now() + .milliseconds(ms), execute: item)
+    let box = WorkItemBox(item)
+    return GestureEngine.Scheduler.Ticket { box.item.cancel() }
 }

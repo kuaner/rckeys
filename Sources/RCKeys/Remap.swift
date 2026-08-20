@@ -4,7 +4,7 @@ import Foundation
 /// 系统从此对这台设备零反应（含 Secure Input 期间——没有系统事件就无所谓泄漏）。
 /// 作用域用 --matching 限定 VID/PID，真键盘不受影响。
 /// 注意：蓝牙重连后 HID 服务的 registry 实例是新的，必须重新应用（由设备回调驱动）。
-enum Remap {
+public enum Remap {
     static let hidutil = "/usr/bin/hidutil"
     static let matching = "{\"VendorID\":\(RC003.vendorID),\"ProductID\":\(RC003.productID)}"
 
@@ -32,12 +32,12 @@ enum Remap {
     }
 
     /// 应用哑化。返回是否成功。
-    static func apply() -> Bool {
+    public static func apply() -> Bool {
         run(["property", "--matching", matching, "--set", payload]) == 0
     }
 
     /// 清除本设备的映射（退出/暂停时调用；`rckeys --fix` 亦可手动清残留）。
-    static func clear() -> Bool {
+    public static func clear() -> Bool {
         run(["property", "--matching", matching, "--set", "{\"UserKeyMapping\":[]}"]) == 0
     }
 }

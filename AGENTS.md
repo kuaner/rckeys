@@ -8,16 +8,19 @@ RCKeys：小米蓝牙遥控器 2 Pro（RC003）的 macOS 按键自定义工具�
 
 ```bash
 swift test                  # 单元测试（Swift Testing）：引擎虚拟时钟边缘用例 + 模型层
-./build.sh                  # swiftc -O 编译 CLI（单模块直编，不走 SPM）
+./build.sh                  # swift build -c release 构建 CLI（含 Sparkle 依赖）
 .build/rckeys --test        # 12 秒真机试运行：应用哑化、打印解码、自动恢复
 .build/rckeys --fix         # 清理 hidutil 残留映射（调试崩残留时用）
-scripts/build_app.sh release  # 打包 RCKeys.app（通用二进制）+ 签名公证 + DMG
+scripts/build_app.sh release  # 打包 RCKeys.app（SPM 通用二进制）+ 签名公证 + DMG
 swift scripts/make_icon.swift # 重新生成应用图标 assets/AppIcon.icns
 ```
 
-- 目录结构：`Sources/RCKeys/` 为逻辑库（SPM 测试目标，`@testable` 免 public）；
-  `Sources/main.swift` 为 CLI/App 入口。生产构建用 swiftc 把两者编成**单一模块**
-  （不需要 SPM）；`Package.swift` 仅供 `swift test`。语言模式固定 v5。
+- 全 SPM 单管线、**Swift 6 语言模式**：`Sources/RCKeys/` 为库目标 `RCKeysCore`
+  （测试经 `@testable` 用内部成员），`Sources/main/App.swift` 为 `@main` 入口
+  （目标 `rckeys`，依赖库的 public API）。Sparkle 是 SPM 二进制依赖（2.9.1）。
+- 并发模型：UI/服务层 `@MainActor`；手势引擎与 HID 监听为单线程契约的
+  `@unchecked Sendable`（生产=主线程驱动，测试=单线程虚拟时钟）。
+  macOS 大小写不敏感：库/可执行目标名不可仅大小写不同（故库叫 RCKeysCore）。
 - 手势引擎的时钟可注入（`GestureEngine.Scheduler`）：生产主队列真实时钟，
   测试用 `VirtualClock` 确定性推进——改引擎时序逻辑必须补对应测试。
 - 无 Xcode 工程、无 lint；只需 Command Line Tools。`.build/`、`dist/` 已 gitignore。

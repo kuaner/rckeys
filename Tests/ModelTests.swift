@@ -1,7 +1,7 @@
 import Testing
 import Foundation
 import Carbon.HIToolbox
-@testable import RCKeys
+@testable import RCKeysCore
 
 // 配置模型 / 键位表 / 可读描述 / 哑化 payload 的纯逻辑测试（原 --self-test 迁移并扩充）
 

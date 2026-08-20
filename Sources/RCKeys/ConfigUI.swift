@@ -9,11 +9,12 @@ import Combine
 
 // MARK: - 窗口管理
 
-final class ConfigWindowController {
-    static let shared = ConfigWindowController()
+@MainActor public final class ConfigWindowController {
+    public init() {}
+    public static let shared = ConfigWindowController()
     private var window: NSWindow?
 
-    func show() {
+    public func show() {
         if window == nil {
             let w = NSWindow(
                 contentRect: NSRect(x: 0, y: 0, width: 920, height: 620),
@@ -34,7 +35,7 @@ final class ConfigWindowController {
 
 // MARK: - 热点表（归一化坐标，照片按 .fill 裁切到 202×410 显示）
 
-struct Hotspot: Identifiable {
+struct Hotspot: Identifiable, Sendable {
     let key: RemoteKey
     let anchor: UnitPoint
     let label: String
@@ -57,13 +58,15 @@ let hotspots: [Hotspot] = [
     .init(key: .tv,     anchor: UnitPoint(x: 0.604, y: 0.569), label: "TV"),
 ]
 
-let remotePhoto: NSImage? = {
+@MainActor enum Assets {
+    static let remotePhoto: NSImage? = {
     guard let url = Bundle.main.url(forResource: "RC003-remote-photo",
                                     withExtension: "png", subdirectory: "Resources")
         ?? Bundle.main.url(forResource: "RC003-remote-photo", withExtension: "png")
         ?? Optional(URL(fileURLWithPath: "Resources/RC003-remote-photo.png")) else { return nil }
-    return NSImage(contentsOf: url)
-}()
+        return NSImage(contentsOf: url)
+    }()
+}
 
 // MARK: - 触发位
 
@@ -96,7 +99,7 @@ enum TriggerKind: String, CaseIterable, Identifiable {
 
 // MARK: - 视图模型（自动保存：防抖 500ms 写盘，主程序文件监听随后热加载）
 
-final class ConfigViewModel: ObservableObject {
+@MainActor final class ConfigViewModel: ObservableObject {
     @Published var cfg: Config
     @Published var savedFlash = false
     private var lastSaved: Config
@@ -111,7 +114,7 @@ final class ConfigViewModel: ObservableObject {
             .dropFirst()
             .removeDuplicates()
             .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
-            .sink { [weak self] in self?.persist($0) }
+            .sink { [weak self] c in MainActor.assumeIsolated { self?.persist(c) } }
             .store(in: &cancellables)
     }
 
@@ -124,8 +127,10 @@ final class ConfigViewModel: ObservableObject {
             savedFlash = true
             let token = UUID()
             flashToken = token
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
-                if self?.flashToken == token { self?.savedFlash = false }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) {
+                MainActor.assumeIsolated {
+                    if self.flashToken == token { self.savedFlash = false }
+                }
             }
         }
     }
@@ -187,7 +192,7 @@ struct ConfigEditorView: View {
                 .padding(.top, 20)
             ZStack {
                 Group {
-                    if let photo = remotePhoto {
+                    if let photo = Assets.remotePhoto {
                         Image(nsImage: photo).resizable().aspectRatio(contentMode: .fill)
                     } else {
                         Rectangle().fill(Color.gray.opacity(0.25))
@@ -378,7 +383,9 @@ struct ConfigEditorView: View {
         let token = UUID()
         noticeToken = token
         DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
-            if noticeToken == token { notice = nil }
+            MainActor.assumeIsolated {
+                if noticeToken == token { notice = nil }
+            }
         }
     }
 }

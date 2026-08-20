@@ -14,8 +14,6 @@ APP_DIR="${DIST}/${APP_NAME}.app"
 DMG_PATH="${DIST}/RCKeys-${VERSION}-universal.dmg"
 
 # Sparkle 自动更新
-SPARKLE_VERSION="2.9.1"
-SPARKLE_CACHE=".sparkle-cache"
 # EdDSA 公钥（私钥在钥匙串 / GitHub secret SPARKLE_PRIVATE_ED_KEY，用于 appcast 签名）
 SPARKLE_PUBLIC_ED_KEY="jd8kYhK9YOkMi7ch2M66E8ndRf0ReEGvwSrFLQOdEk0="
 SU_FEED_URL="https://kuaner.github.io/rckeys/appcast.xml"
@@ -27,33 +25,22 @@ warn() { echo -e "${Y}$1${NC}"; }
 # 本地密钥（.secret.env，gitignore）：配置了则 Developer ID 签名 + 公证，否则 ad-hoc
 [ -f .secret.env ] && source .secret.env
 
-# Sparkle 二进制发行版缓存（含通用 Sparkle.framework 与 sign_update 工具）
-ensure_sparkle() {
-    if [ ! -d "${SPARKLE_CACHE}/Sparkle.framework" ]; then
-        log "下载 Sparkle ${SPARKLE_VERSION}…"
-        mkdir -p "${SPARKLE_CACHE}"
-        curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
-            -o "${SPARKLE_CACHE}/sparkle.tar.xz"
-        tar xf "${SPARKLE_CACHE}/sparkle.tar.xz" -C "${SPARKLE_CACHE}"
-        rm -f "${SPARKLE_CACHE}/sparkle.tar.xz"
-    fi
-}
-
 build() {
-    ensure_sparkle
-    log "=== 构建 ${APP_NAME} v${VERSION}（arm64 + x86_64 通用） ==="
-    local fw="-F ${SPARKLE_CACHE} -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks"
-    mkdir -p .build/universal
-    swiftc -O -target "arm64-apple-macos${MIN_MACOS}" ${fw} Sources/RCKeys/*.swift Sources/main.swift -o .build/universal/rckeys-arm64
-    swiftc -O -target "x86_64-apple-macos${MIN_MACOS}" ${fw} Sources/RCKeys/*.swift Sources/main.swift -o .build/universal/rckeys-x64
-    lipo -create .build/universal/rckeys-arm64 .build/universal/rckeys-x64 \
-        -output .build/universal/rckeys-universal
+    log "=== 构建 ${APP_NAME} v${VERSION}（SPM，arm64 + x86_64 通用） ==="
+    swift build -c release --arch arm64 --arch x86_64 --product rckeys
+    # --arch 双架构的通用产物固定在 .build/apple/Products/Release/（勿用 find 撞到单架构目录）
+    local bin=".build/apple/Products/Release/rckeys"
+    local fw=".build/apple/Products/Release/Sparkle.framework"
+    [ -n "${bin}" ] || { echo "找不到 rckeys 产物"; exit 1; }
+    [ -n "${fw}" ] || { echo "找不到 Sparkle.framework 产物"; exit 1; }
 
     log "=== 组装 ${APP_DIR} ==="
     rm -rf "${APP_DIR}"
     mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources" "${APP_DIR}/Contents/Frameworks"
-    cp .build/universal/rckeys-universal "${APP_DIR}/Contents/MacOS/${APP_NAME}"
-    cp -R "${SPARKLE_CACHE}/Sparkle.framework" "${APP_DIR}/Contents/Frameworks/"
+    cp "${bin}" "${APP_DIR}/Contents/MacOS/${APP_NAME}"
+    # SPM 产物自带 @executable_path/../lib，补标准 .app 框架搜索路径
+    install_name_tool -add_rpath @executable_path/../Frameworks "${APP_DIR}/Contents/MacOS/${APP_NAME}"
+    cp -R "${fw}" "${APP_DIR}/Contents/Frameworks/"
     cp assets/AppIcon.icns "${APP_DIR}/Contents/Resources/"
     cp Resources/RC003-remote-photo.png "${APP_DIR}/Contents/Resources/"
     cat > "${APP_DIR}/Contents/Info.plist" <<PLIST

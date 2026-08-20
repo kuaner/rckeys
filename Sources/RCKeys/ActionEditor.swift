@@ -545,7 +545,7 @@ struct ShellParamEditor: View {
 // 修饰键（含 fn/🌐）按住不动 0.7 秒 = 录为单修饰键动作。
 // 注意：系统默认"按下🌐键=显示表情"，需在 系统设置>键盘 里改为"什么都不做"。
 
-final class ComboRecorder {
+final class ComboRecorder: @unchecked Sendable {
     static let shared = ComboRecorder()
     private var tap: CFMachPort?
     private var source: CFRunLoopSource?

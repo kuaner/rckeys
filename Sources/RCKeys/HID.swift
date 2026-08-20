@@ -17,18 +17,19 @@ enum RC003 {
 
 /// 纯监听通道：IOHIDManager 非独占打开 + 原始报告回调 → 按键边沿。
 /// 原始报告不经 UserKeyMapping 翻译，系统哑化不影响本通道（真机验证）。
-final class KeyListener {
+public final class KeyListener: @unchecked Sendable {
     private let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
+    public init() {}
     private var pressed: Set<RemoteKey> = []
     private var started = false
 
-    var onEvent: ((RemoteKey, Bool) -> Void)?
-    var onDevice: ((Bool) -> Void)?
-    var log: ((String) -> Void)?
+    public var onEvent: (@Sendable (RemoteKey, Bool) -> Void)?
+    public var onDevice: (@Sendable (Bool) -> Void)?
+    public var log: (@Sendable (String) -> Void)?
 
     /// 打开监听；返回是否成功（失败通常是「输入监控」权限未授予）。
     @discardableResult
-    func start() -> Bool {
+    public func start() -> Bool {
         guard !started else { return true }
         started = true
         let match: [String: Any] = [
@@ -46,7 +47,7 @@ final class KeyListener {
         return r == kIOReturnSuccess
     }
 
-    func stop() {
+    public func stop() {
         guard started else { return }
         started = false
         IOHIDManagerUnscheduleFromRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)

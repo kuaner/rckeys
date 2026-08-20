@@ -1,25 +1,27 @@
 import Testing
 import Foundation
-@testable import RCKeys
+@testable import RCKeysCore
 
 // 手势引擎边缘用例：虚拟时钟确定性推进，无真实等待。
 // Rig 模拟一次按压 = keyDown → advance(pressMs) → keyUp。
 
 /// 虚拟时钟：按到期时间（同刻按注册序）执行任务
-final class VirtualClock {
+final class VirtualClock: @unchecked Sendable {
     private var nowMs = 0
     private var nextId = 0
-    private var jobs: [(id: Int, due: Int, fire: () -> Void)] = []
+    private var jobs: [(id: Int, due: Int, fire: @Sendable () -> Void)] = []
 
     var scheduler: GestureEngine.Scheduler {
-        GestureEngine.Scheduler(
+        // 具名函数声明允许 @escaping 参数（闭包字面量不行）
+        @Sendable func after(_ ms: Int, _ task: GestureEngine.Scheduler.Task) -> GestureEngine.Scheduler.Ticket {
+            let id = self.nextId
+            self.nextId += 1
+            self.jobs.append((id, self.nowMs + ms, task.call))
+            return GestureEngine.Scheduler.Ticket { self.jobs.removeAll { $0.id == id } }
+        }
+        return GestureEngine.Scheduler(
             now: { DispatchTime(uptimeNanoseconds: UInt64(self.nowMs) * 1_000_000) },
-            after: { ms, fire in
-                let id = self.nextId
-                self.nextId += 1
-                self.jobs.append((id, self.nowMs + ms, fire))
-                return GestureEngine.Scheduler.Ticket { self.jobs.removeAll { $0.id == id } }
-            })
+            after: after)
     }
 
     func advance(_ ms: Int) {
@@ -34,7 +36,7 @@ final class VirtualClock {
 }
 
 /// 测试台：收集触发记录（key.kind(actionType)）、系统手势、修饰键按压
-final class Rig {
+final class Rig: @unchecked Sendable {
     let clock = VirtualClock()
     var fired: [String] = []
     var system: [String] = []

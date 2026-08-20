@@ -5,7 +5,7 @@ import CoreGraphics
 
 /// 动作执行：CGEvent 合成按键/组合键、NX_SYSDEFINED 媒体键、鼠标点击、打开 App、shell。
 /// 注入需要「辅助功能」权限（首次运行会弹授权提示）。
-enum Actions {
+public enum Actions {
 
     // 键名 -> 虚拟键码（编译期由 SDK 常量保证正确）
     static let codes: [String: CGKeyCode] = {
@@ -75,7 +75,7 @@ enum Actions {
 
     // MARK: - 执行
 
-    static func perform(_ action: Action) {
+    public static func perform(_ action: Action) {
         switch action.type {
         case "key":
             if let combo = action.combo { postCombo(combo) }
@@ -92,7 +92,7 @@ enum Actions {
         }
     }
 
-    static func describe(_ a: Action) -> String {
+    public static func describe(_ a: Action) -> String {
         switch a.type {
         case "key": return "key \(a.combo ?? "?")"
         case "media": return "media \(a.name ?? "?")"

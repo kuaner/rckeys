@@ -145,7 +145,7 @@ RC003 ──BLE──▶ macOS
 
 - **安装**：从 GitHub Releases 下载 DMG，拖入「应用程序」。也可源码运行：
   `./build.sh && .build/rckeys`（构建 + 自检）。
-- **本地打包**：`scripts/build_app.sh release` —— swiftc 双架构 + lipo 通用二进制，
+- **本地打包**：`scripts/build_app.sh release` —— SPM 双架构通用二进制（Swift 6 语言模式），
   组装 `RCKeys.app`（无 Dock/菜单栏图标），产出 `dist/RCKeys-<版本>-universal.dmg`；
   版本可用 `VERSION=` 覆盖（CI 从 tag 取）。配置 `.secret.env`（见 `.gitignore`，
   含 APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID）

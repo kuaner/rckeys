@@ -8,43 +8,45 @@ import AppKit
 /// 时长判定与单击零歧义、双方零延迟——曾用双击 TV，但单击/双击共存必有
 /// 时间窗歧义（连点单击会误触双击），故改为长按；菜单语义也贴切。
 /// 菜单键的长按与连发位在配置界面锁定（两者共享"按住"语义，均被系统占用）。
-enum ServiceGesture {
-    static let key: RemoteKey = .menu
-    static let kind = "hold"
+public enum ServiceGesture {
+    public static let key: RemoteKey = .menu
+    public static let kind = "hold"
 }
 
-final class ServiceStatus: ObservableObject {
-    @Published var connected = false
-    @Published var paused = false
-    @Published var note = ""
+@MainActor public final class ServiceStatus: ObservableObject {
+    public init() {}
+    @Published public var connected = false
+    @Published public var paused = false
+    @Published public var note = ""
 
-    var statusLine: String {
+    public var statusLine: String {
         if paused { return "已暂停" }
         return connected ? "已接管" : "等待遥控器…"
     }
 }
 
-final class ServiceHub {
-    static let shared = ServiceHub()
-    let status = ServiceStatus()
-    var onTogglePause: (() -> Void)?
-    var onReloadConfig: (() -> Void)?
-    var onQuit: (() -> Void)?
-    /// 检查更新（Sparkle 仅在打包构建中可用）
-    var onCheckForUpdates: (() -> Void)?
+@MainActor public final class ServiceHub {
+    public init() {}
+    public static let shared = ServiceHub()
+    public let status = ServiceStatus()
+    public var onTogglePause: (@MainActor () -> Void)?
+    public var onReloadConfig: (@MainActor () -> Void)?
+    public var onQuit: (@MainActor () -> Void)?
+    /// 检查更新
+    public var onCheckForUpdates: (@MainActor () -> Void)?
 }
 
 /// 开机自启：应用初始化时安装 LaunchAgent（登录 RunAtLoad 自启；崩溃自动拉起，
 /// 干净退出不拉起——KeepAlive SuccessfulExit=false）。仅对 .app 内的正式安装生效，
 /// 开发用裸二进制（.build/rckeys）跳过。取消自启：删除 plist 后退出即可。
-enum AutoStart {
+public enum AutoStart {
     static let label = "com.kuaner.rckeys"
-    static var plistURL: URL {
+    public static var plistURL: URL {
         FileManager.default.urls(for: .libraryDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("LaunchAgents/\(label).plist")
     }
 
-    static func install() {
+    public static func install() {
         guard let exe = Bundle.main.executableURL,
               Bundle.main.bundlePath.hasSuffix(".app") else {
             print("开发运行（非 .app 安装），跳过开机自启")
