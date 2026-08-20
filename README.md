@@ -127,12 +127,14 @@ RC003 ──BLE──▶ macOS
 4. RC003 按键报告格式：`reportID(1B) + N×小端 u16 usage 槽`（实测 7 字节 / 3 槽）；
    值回调中存在 usage 0xFFFFFFFF 噪声元素需过滤；返回键 0xF1 超出键盘页标准范围，
    系统天然不处理、hidutil 不接受映射，无需哑化。
-   **并发按键**：实测按住 OK 期间按**菜单**，菜单事件完全不上报（据此曾断言并发不可行）；
-   但另一 RC003 项目 [godarrenw/mi_remote_control](https://github.com/godarrenw/mi_remote_control)
-   的 DESIGN 记录 Windows 侧抓包为 9 字节报告、3 个 usage 槽**支持多键同按**，其手势模型
-   也只定义了 **OK+方向**（并称引擎能力保留、未列入实机已验证项）——即固件可能支持
-   OK+方向等特定组合而非任意两键。OK+方向在 macOS 是否上报可用
-   `.build/rckeys --test` 按住 OK 按方向验证（打印每个按键边沿）。
+   **并发按键不可用（已充分实测）**：用双通道探针（`probes/duallisten.swift`，原始报告层 +
+   值回调层同时监听）验证了 OK+方向、方向+OK、音量+与音量−同按、OK+菜单四组组合，
+   无任何一份报告出现第二个 usage、值回调亦然——固件在 macOS 配对下不上报并发按键，
+   组合键触发在本机不可实现。值回调中另有 usage 0x1（ErrorRollOver）元素随报告翻转的噪声。
+   参考：[godarrenw/mi_remote_control](https://github.com/godarrenw/mi_remote_control) 记录的
+   Windows 侧抓包为 9 字节 / 3 槽多键报告——不同系统协商的报告格式不同（我们实测 7 字节）；
+   其 OK+方向手势未列入实机已验证项，与本文结论一致。多键触发只能用「先 A 后 B」
+   短时序列实现。
 5. RC003 身份信息：GATT 暴露 `180F/180A/ATVV(AB5E0001)/8A7A0001(私有)/01BF/FE59(Nordic
    Secure DFU)`；Device Information 为 Manufacturer `MIOM` / Model `RC003` /
    HW `V2.0` / FW `2671` / SW `A.7.0.6`。Type-C 为纯充电口（USB 树零枚举）。

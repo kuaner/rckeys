@@ -60,7 +60,9 @@ kIOReturnNotPrivileged）。这是设计决策，不是待修 bug。
 - **哑化不影响监听**：UserKeyMapping 映到 usage 0 后，IOHID 原始报告回调仍收到
   原始 usage，所以「内核哑化 + 纯监听」链路成立。
 - **蓝牙重连后 registry 实例变化**，必须由设备回调重新应用哑化，否则系统恢复默认行为。
-- **报告格式**：`reportID(1B) + N×小端 u16 usage 槽`；值回调有 0xFFFFFFFF 噪声需过滤；
+- **报告格式**：`reportID(1B) + N×小端 u16 usage 槽`；值回调有 0xFFFFFFFF 与 0x1 噪声需过滤；
+  **固件不上报并发按键**（双通道探针实测 OK+方向/音量±/OK+菜单四组，报告层与值回调层均无第二键）——
+  任何"组合键/和弦"功能在此硬件上不可实现，勿再尝试；多键触发只能用先 A 后 B 的短时序列；
   返回键 0xF1 超出键盘页，系统不处理、hidutil 不映射，无需哑化（`Remap.neuters` 有 12 项）。
 - **运行时权限**：输入监控（IOHID 读键）+ 辅助功能（CGEvent 注入），首次运行各弹一次。
 - 不要与其他接管工具（Remote Mic 等）同时运行。
