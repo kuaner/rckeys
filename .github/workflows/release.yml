@@ -55,7 +55,7 @@ jobs:
           KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
           [ -f "${KEYCHAIN_PATH}" ] && security delete-keychain "${KEYCHAIN_PATH}" || true
 
-      - uses: actions/upload-artifact@v5
+      - uses: actions/upload-artifact@v7
         with:
           name: RCKeys-dmg
           path: dist/*.dmg
