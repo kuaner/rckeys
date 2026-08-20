@@ -3,7 +3,9 @@ import IOKit
 import IOKit.hid
 
 // 双通道监听：同时验证 原始报告回调（raw report）与 值回调（input value）
-// 在哑化映射生效时哪一层仍能收到按键。18 秒自动退出。
+// 在哑化映射生效时哪一层仍能收到按键。45 秒自动退出。
+// 并发组合验证（固件是否上报第二键）：按住 A 期间按 B，
+// 观察报告行是否出现两个 usage（如 "0028OK 0052↑"）、值回调是否出现 B。
 final class Dual {
     let mgr = IOHIDManagerCreate(kCFAllocatorDefault, IOOptionBits(kIOHIDOptionsTypeNone))
     var reports = 0
@@ -25,8 +27,8 @@ final class Dual {
         IOHIDManagerRegisterInputValueCallback(mgr, Self.value, Unmanaged.passUnretained(self).toOpaque())
         IOHIDManagerScheduleWithRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         let r = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
-        print(String(format: "open -> 0x%08X —— 请按遥控器方向键/OK/音量（18 秒窗口）", r))
-        DispatchQueue.main.asyncAfter(deadline: .now() + 18) {
+        print(String(format: "open -> 0x%08X —— 请依次尝试：①按住OK按方向 ②按住方向按OK ③同时按住音量+/− ④按住OK按菜单（45 秒窗口）", r))
+        DispatchQueue.main.asyncAfter(deadline: .now() + 45) {
             print("\n== 窗口结束 ==")
             print("原始报告回调: \(self.reports) 个报告")
             print("值回调(usage元素): \(self.values) 个事件")
