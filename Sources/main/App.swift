@@ -65,9 +65,8 @@ enum RCKeysApp {
     var engine: GestureEngine!
     var paused = false
     private var lastConfigOpen = DispatchTime(uptimeNanoseconds: 0)
-    /// 必须持有 dispatch source，否则对象释放即失效（信号/文件监听会被静默丢弃）
+    /// 必须持有 dispatch source，否则对象释放即失效（信号监听会被静默丢弃）
     private var signalSources: [DispatchSourceSignal] = []
-    private var configFileSource: DispatchSourceFileSystemObject?
     /// 防 App Nap：持有活动句柄，后台无窗口时定时器不被系统节流
     private var activity: NSObjectProtocol?
 
@@ -142,7 +141,6 @@ enum RCKeysApp {
         Updater.start()
         ServiceHub.shared.onCheckForUpdates = { Updater.check() }
 
-        watchConfigFile()
         if !listener.start() {
             ServiceHub.shared.status.note = "输入监控权限未授予：系统设置→隐私与安全性→输入监控，勾选 RCKeys 后重启 App"
         }
@@ -200,6 +198,7 @@ enum RCKeysApp {
         ServiceHub.shared.status.paused = paused
     }
 
+    /// 手动重载：配置文件只在启动与这里被读取（无文件监听）
     private func reloadConfigNow() {
         if let cfg = Config.reload() {
             engine.updateConfig(cfg)
@@ -207,26 +206,6 @@ enum RCKeysApp {
         } else {
             print("配置重载失败：JSON 解析错误，保留旧配置")
         }
-    }
-
-    /// 监听配置目录而非文件本身：UI/编辑器多为原子写（临时文件 rename 顶替），
-    /// 旧 inode 上的 .write 永远不触发；目录的 .write 在条目增删改名时必触发。
-    private func watchConfigFile() {
-        let fd = open(Config.configDir.path, O_EVTONLY)
-        guard fd >= 0 else { return }
-        let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write], queue: .main)
-        src.setEventHandler { [weak self] in
-            // 防多次原子写触发抖动：延迟 300ms 合并（主队列送达）
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
-                MainActor.assumeIsolated {
-                    guard let self, let cfg = Config.reload() else { return }
-                    self.engine.updateConfig(cfg)
-                    print("配置文件变更已热加载")
-                }
-            }
-        }
-        src.resume()
-        configFileSource = src
     }
 
     private func watchSignals() {
