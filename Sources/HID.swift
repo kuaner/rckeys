@@ -26,8 +26,10 @@ final class KeyListener {
     var onDevice: ((Bool) -> Void)?
     var log: ((String) -> Void)?
 
-    func start() {
-        guard !started else { return }
+    /// 打开监听；返回是否成功（失败通常是「输入监控」权限未授予）。
+    @discardableResult
+    func start() -> Bool {
+        guard !started else { return true }
         started = true
         let match: [String: Any] = [
             kIOHIDVendorIDKey as String: RC003.vendorID,
@@ -41,6 +43,7 @@ final class KeyListener {
         IOHIDManagerScheduleWithRunLoop(mgr, CFRunLoopGetMain(), CFRunLoopMode.commonModes.rawValue)
         let r = IOHIDManagerOpen(mgr, IOOptionBits(kIOHIDOptionsTypeNone))
         log?(String(format: "HID 监听 open -> 0x%08X %@", r, r == kIOReturnSuccess ? "（正常）" : "（需在 系统设置>隐私与安全性>输入监控 授权运行本程序的 App）"))
+        return r == kIOReturnSuccess
     }
 
     func stop() {

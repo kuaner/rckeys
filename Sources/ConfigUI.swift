@@ -24,7 +24,10 @@ final class ConfigWindowController {
             w.contentView = NSHostingView(rootView: ConfigEditorView())
             window = w
         }
+        // 后台/accessory 应用抢前台受限：多重手段确保窗口可见
+        window?.deminiaturize(nil)
         window?.makeKeyAndOrderFront(nil)
+        window?.orderFrontRegardless()
         NSApp.activate(ignoringOtherApps: true)
     }
 }
@@ -159,7 +162,7 @@ struct ConfigEditorView: View {
 
     private var footerBar: some View {
         HStack(spacing: 8) {
-            Text("遥控器：双击 菜单 键打开此窗口")
+            Text("遥控器：双击 TV 键打开此窗口")
             Spacer()
             Text(service.statusLine)
             if !service.note.isEmpty {
@@ -293,7 +296,7 @@ struct ConfigEditorView: View {
                                     isSelected: selectedTrigger == kind && !reserved,
                                     systemText: reserved ? "呼出设置（系统）" : nil) {
                             if reserved {
-                                showNotice("双击「菜单」为系统保留手势（呼出设置），不可修改")
+                                showNotice("双击「TV」为系统保留手势（呼出设置），不可修改")
                             } else {
                                 selectedTrigger = kind
                             }
@@ -326,7 +329,7 @@ struct ConfigEditorView: View {
     /// 写入当前 (键, 触发位) 的动作；系统保留位拒写；配置长按/连发时自动清掉另一方并提示。
     private func writeAction(_ newValue: Action?) {
         if selected == ServiceGesture.key && selectedTrigger == .double {
-            showNotice("双击「菜单」为系统保留手势（呼出设置），不可修改")
+            showNotice("双击「TV」为系统保留手势（呼出设置），不可修改")
             return
         }
         var kc = currentKC

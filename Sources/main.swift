@@ -21,7 +21,7 @@ if args.contains("--version") { print("rckeys 0.2.0"); exit(0) }
 if args.contains("--help") {
     print("""
     rckeys — 小米遥控器 2 Pro (RC003) 按键自定义
-    无参数     启动后台服务（无菜单栏图标；遥控器双击 菜单 键打开设置）
+    无参数     启动后台服务（无菜单栏图标；遥控器双击 TV 键打开设置）
     --test     12 秒试运行（应用映射并打印按键解码，不注入动作）
     --fix      清理崩溃残留的哑化映射
     配置文件:  \(Config.configURL.path)
@@ -170,13 +170,15 @@ final class Agent: NSObject, NSApplicationDelegate {
         ServiceHub.shared.onQuit = { [weak self] in self?.shutdown() }
 
         watchConfigFile()
-        listener.start()
+        if !listener.start() {
+            ServiceHub.shared.status.note = "输入监控权限未授予：系统设置→隐私与安全性→输入监控，勾选 RCKeys 后重启 App"
+        }
         watchSignals()
 
         // 点击应用图标启动 = 服务 + 设置窗口；run loop 起来后展示
         DispatchQueue.main.async { ConfigWindowController.shared.show() }
 
-        print("rckeys 已启动（后台服务，无菜单栏/Dock 图标）。双击 菜单 键或再次打开 App 可打开设置。配置: \(Config.configURL.path)")
+        print("rckeys 已启动（后台服务，无菜单栏/Dock 图标）。双击 TV 键或再次打开 App 可打开设置。配置: \(Config.configURL.path)")
         app.run()
     }
 
@@ -186,7 +188,7 @@ final class Agent: NSObject, NSApplicationDelegate {
         guard now.uptimeNanoseconds > lastConfigOpen.uptimeNanoseconds + 1_000_000_000 else { return }
         lastConfigOpen = now
         ConfigWindowController.shared.show()
-        print("双击菜单呼出设置界面")
+        print("系统保留手势触发：呼出设置界面")
     }
 
     private func togglePause() {
@@ -255,9 +257,11 @@ final class Agent: NSObject, NSApplicationDelegate {
         return .terminateNow
     }
 
-    /// 已在运行时再次点击 .app：macOS 发 reopen 事件，弹出设置窗口（不新起进程）
-    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) {
+    /// 已在运行时再次点击 .app：macOS 发 reopen 事件，弹出设置窗口（不新起进程）。
+    /// 注意必须返回 Bool——Void 签名不满足委托方法，事件会被静默丢弃。
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) -> Bool {
         ConfigWindowController.shared.show()
+        return true
     }
 }
 
