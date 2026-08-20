@@ -42,6 +42,9 @@ build() {
     install_name_tool -add_rpath @executable_path/../Frameworks "${APP_DIR}/Contents/MacOS/${APP_NAME}"
     cp -R "${fw}" "${APP_DIR}/Contents/Frameworks/"
     cp assets/AppIcon.icns "${APP_DIR}/Contents/Resources/"
+    # 声明中文本地化：Sparkle 等内嵌框架按宿主 App 的本地化选语言（zh_CN 与 Sparkle 的 lproj 命名一致）
+    mkdir -p "${APP_DIR}/Contents/Resources/zh_CN.lproj"
+    printf '/* 仅声明本地化，无自定义文案 */\n' > "${APP_DIR}/Contents/Resources/zh_CN.lproj/InfoPlist.strings"
     cp Resources/RC003-remote-photo.png "${APP_DIR}/Contents/Resources/"
     cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
 <?xml version="1.0" encoding="UTF-8"?>
@@ -56,6 +59,8 @@ build() {
     <key>CFBundlePackageType</key><string>APPL</string>
     <key>CFBundleExecutable</key><string>${APP_NAME}</string>
     <key>CFBundleIconFile</key><string>AppIcon</string>
+    <key>CFBundleDevelopmentRegion</key><string>zh_CN</string>
+    <key>CFBundleAllowMixedLocalizations</key><true/>
     <key>LSUIElement</key><true/>
     <key>LSMinimumSystemVersion</key><string>${MIN_MACOS}</string>
     <key>NSHumanReadableCopyright</key><string>MIT License</string>
