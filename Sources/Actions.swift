@@ -84,7 +84,7 @@ enum Actions {
         case "mouse":
             postMouseClick(action.name == "left" ? .left : .right)
         case "open":
-            if let app = action.name, !app.isEmpty { openApp(app) }
+            if let app = action.name, !app.isEmpty { openApp(app, bundleID: action.command) }
         case "shell":
             if let cmd = action.command, !cmd.isEmpty { runShell(cmd) }
         default:
@@ -194,11 +194,22 @@ enum Actions {
         CGEvent(mouseEventSource: src, mouseType: kindUp, mouseCursorPosition: loc, mouseButton: button)?.post(tap: .cghidEventTap)
     }
 
-    static func openApp(_ name: String) {
+    /// 打开 App：优先 bundle id（`open -b`，App 改名/更新不影响），
+    /// 失败或未配置时回退按名打开（`open -a`，兼容旧配置存的文件名）。
+    @discardableResult
+    static func openApp(_ name: String, bundleID: String? = nil) -> Bool {
+        if let bid = bundleID, !bid.isEmpty, runOpen(["-b", bid]) { return true }
+        return runOpen(["-a", name])
+    }
+
+    @discardableResult
+    private static func runOpen(_ args: [String]) -> Bool {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/usr/bin/open")
-        p.arguments = ["-a", name]
-        try? p.run()
+        p.arguments = args
+        do { try p.run() } catch { return false }
+        p.waitUntilExit()
+        return p.terminationStatus == 0
     }
 
     static func runShell(_ command: String) {

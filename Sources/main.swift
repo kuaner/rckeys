@@ -126,6 +126,7 @@ final class Agent: NSObject, NSApplicationDelegate {
         try? "\(getpid())".write(to: pidFileURL, atomically: true, encoding: .utf8)
         activity = ProcessInfo.processInfo.beginActivity(
             options: [.userInitiated, .idleSystemSleepDisabled], reason: "RCKeys HID 接管服务")
+        AutoStart.install()
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         app.delegate = self

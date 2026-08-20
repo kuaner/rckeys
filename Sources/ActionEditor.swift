@@ -483,7 +483,9 @@ struct OpenParamEditor: View {
             }
             VStack(alignment: .leading, spacing: 4) {
                 Text(appName.isEmpty ? "未选择 App" : appName).font(.body.weight(.medium))
-                Text(appName.isEmpty ? "从 /Applications 选择要打开的应用" : "执行 open -a \(appName)")
+                Text(appName.isEmpty
+                     ? "从 /Applications 选择要打开的应用"
+                     : "执行 open -b \(action?.command ?? appName)（bundle id）")
                     .font(.caption).foregroundStyle(.secondary)
             }
             Spacer()
@@ -506,7 +508,10 @@ struct OpenParamEditor: View {
         panel.allowsMultipleSelection = false
         panel.canChooseFiles = true
         if panel.runModal() == .OK, let url = panel.url {
-            action = Action(type: "open", name: url.deletingPathExtension().lastPathComponent)
+            // name 留作显示；command 存 bundle id（open -b），改名/更新不影响
+            action = Action(type: "open",
+                            name: url.deletingPathExtension().lastPathComponent,
+                            command: Bundle(url: url)?.bundleIdentifier)
         }
     }
 }

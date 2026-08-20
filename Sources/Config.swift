@@ -12,8 +12,8 @@ enum RemoteKey: String, CaseIterable {
 struct Action: Codable, Equatable {
     var type: String
     var combo: String?     // type=key: "ctrl+cmd+q" / "arrowup" / "cmd"
-    var name: String?      // type=media: volume_up…; type=open: App 名; type=mouse: right/left
-    var command: String?   // type=shell
+    var name: String?      // type=media: volume_up…; type=open: App 名（显示用）; type=mouse: right/left
+    var command: String?   // type=shell: 命令; type=open: bundle id（open -b 优先，缺省回退 open -a name）
 
     static func key(_ combo: String) -> Action { Action(type: "key", combo: combo) }
     static func media(_ name: String) -> Action { Action(type: "media", name: name) }

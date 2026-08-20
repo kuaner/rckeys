@@ -44,6 +44,11 @@ RC003 ──BLE──▶ macOS
 清理映射并退出；窗口底栏显示接管状态（已接管 / 等待遥控器… / 已暂停）。关闭窗口只是
 隐藏，服务继续运行。
 
+**开机自启**：App 启动时自动安装 LaunchAgent
+（`~/Library/LaunchAgents/com.kuaner.rckeys.plist`）——登录自启 + 崩溃自动拉起
+（干净退出不会被拉起）；日志写入 `~/Library/Logs/rckeys.log`。开发用裸二进制运行不安装。
+取消自启：退出 App 后删除该 plist 即可。
+
 **不要与其他接管工具（Remote Mic 等）同时运行。**
 
 ## 设置对话框
@@ -85,7 +90,7 @@ RC003 ──BLE──▶ macOS
 - 触发：`tap`（未配 double 时零延迟）/ `hold` / `repeat`（连发，与 hold 互斥）/ `double`
 - 动作：`key`（combo：`ctrl+cmd+q`、`arrowup`、`f5`、裸修饰键 `fn`…）/ `media`
   （volume_up/down、mute、brightness、play、next、prev）/ `mouse`（left/right）/
-  `open`（App 名）/ `shell` / `none`
+  `open`（选择后存 bundle id，App 改名/更新不受影响；旧配置的 App 名兼容）/ `shell` / `none`
 - `hold` 配置为裸修饰键时自动变为**按住语义**：触发时按下、松手时释放，
   断连/暂停自动补释放，不会卡键。
 
