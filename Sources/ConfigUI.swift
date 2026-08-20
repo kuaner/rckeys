@@ -19,7 +19,7 @@ final class ConfigWindowController {
                 contentRect: NSRect(x: 0, y: 0, width: 920, height: 620),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false)
-            w.title = "RCKeys 按键配置"
+            w.title = "RCKeys 按键配置 · v\(AppInfo.version)"
             w.isReleasedWhenClosed = false
             w.contentView = NSHostingView(rootView: ConfigEditorView())
             window = w

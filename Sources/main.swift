@@ -10,6 +10,12 @@ import Carbon.HIToolbox
 let args = Array(CommandLine.arguments.dropFirst())
 setvbuf(stdout, nil, _IONBF, 0) // nohup 场景下日志实时落盘
 
+/// 版本单一来源：打包构建读 Info.plist（build_app.sh 注入）；
+/// 开发构建回退硬编码（与 build_app.sh 的 VERSION 默认值保持同步）
+enum AppInfo {
+    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.2.2"
+}
+
 // ---- CLI 子命令 ----
 if args.contains("--fix") {
     // 清理崩溃残留的哑化映射
@@ -17,7 +23,7 @@ if args.contains("--fix") {
     print(ok ? "已清除 RC003 的残留映射，遥控器恢复系统默认行为。" : "清除失败（hidutil 错误）")
     exit(ok ? 0 : 1)
 }
-if args.contains("--version") { print("rckeys 0.2.2"); exit(0) }
+if args.contains("--version") { print("rckeys \(AppInfo.version)"); exit(0) }
 if args.contains("--help") {
     print("""
     rckeys — 小米遥控器 2 Pro (RC003) 按键自定义
