@@ -36,7 +36,7 @@ struct KeyConfig: Codable, Equatable {
 
 struct Settings: Codable, Equatable {
     var holdMs: Int = 350
-    var doubleMs: Int = 250
+    var doubleMs: Int = 400   // 遥控器按键行程长，双击窗口从 250 放宽到 400（可调 150-800）
     var repeatMs: Int = 100
     var repeatDelayMs: Int = 350
 }

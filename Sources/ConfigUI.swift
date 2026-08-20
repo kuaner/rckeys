@@ -429,7 +429,7 @@ struct SettingsSheet: View {
                     Button("完成") { dismiss() }
                 }
                 timingStepper("长按判定", "超过该时长算长按", $cfg.settings.holdMs, 150...800)
-                timingStepper("双击窗口", "两次单击在该窗口内算双击；配置双击后，单击会延迟到窗口结束才触发", $cfg.settings.doubleMs, 150...500)
+                timingStepper("双击窗口", "两次单击在该窗口内算双击（含 TV 双击呼出设置）；窗口越大双击越好触发，但单击动作延迟越久", $cfg.settings.doubleMs, 150...800)
                 timingStepper("连发间隔", "连发时相邻两次动作的间隔", $cfg.settings.repeatMs, 30...300)
                 timingStepper("连发起始延迟", "按住超过该时长后开始连发", $cfg.settings.repeatDelayMs, 150...800)
 
