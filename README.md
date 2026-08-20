@@ -6,7 +6,7 @@
 每键支持单击 / 长按 / 双击 / 长按连发四种触发。后台常驻（无菜单栏图标）+ 可视化设置对话框
 （遥控器实拍图点选按键 + 分组键位点选 + 真键盘录制）。
 
-原生 Swift，零第三方依赖，Command Line Tools 即可构建。
+原生 Swift，仅一个第三方依赖（Sparkle 自动更新，SPM），Command Line Tools 即可构建。
 
 ## 架构（每一环都经 macOS 26 + RC003 真机验证）
 
@@ -109,6 +109,8 @@ RC003 ──BLE──▶ macOS
 | 电源 | 锁屏 | 屏幕睡眠 |
 | 语音 | 无动作（自配，常见：长按=fn） | — |
 
+菜单键的**长按**为系统保留手势（呼出设置），不可配置；连发位也因此锁定。
+
 ## 已知发现（对同类项目有复用价值）
 
 以下均为 macOS 26 + RC003（固件 2671）真机实测，探针源码见 `probes/`：
@@ -124,9 +126,13 @@ RC003 ──BLE──▶ macOS
    值回调仍收到**原始 usage**——「内核哑化 + 纯监听」链路完整可用。
 4. RC003 按键报告格式：`reportID(1B) + N×小端 u16 usage 槽`（实测 7 字节 / 3 槽）；
    值回调中存在 usage 0xFFFFFFFF 噪声元素需过滤；返回键 0xF1 超出键盘页标准范围，
-   系统天然不处理、hidutil 不接受映射，无需哑化。固件在按住一个键期间**不上报其他键**
-   （实测按住 OK 再按菜单，菜单事件完全不出现）——并发和弦在 HID 层不可行，
-   多键触发只能用「先 A 后 B」的短时序列实现。
+   系统天然不处理、hidutil 不接受映射，无需哑化。
+   **并发按键**：实测按住 OK 期间按**菜单**，菜单事件完全不上报（据此曾断言并发不可行）；
+   但另一 RC003 项目 [godarrenw/mi_remote_control](https://github.com/godarrenw/mi_remote_control)
+   的 DESIGN 记录 Windows 侧抓包为 9 字节报告、3 个 usage 槽**支持多键同按**，其手势模型
+   也只定义了 **OK+方向**（并称引擎能力保留、未列入实机已验证项）——即固件可能支持
+   OK+方向等特定组合而非任意两键。OK+方向在 macOS 是否上报可用
+   `.build/rckeys --test` 按住 OK 按方向验证（打印每个按键边沿）。
 5. RC003 身份信息：GATT 暴露 `180F/180A/ATVV(AB5E0001)/8A7A0001(私有)/01BF/FE59(Nordic
    Secure DFU)`；Device Information 为 Manufacturer `MIOM` / Model `RC003` /
    HW `V2.0` / FW `2671` / SW `A.7.0.6`。Type-C 为纯充电口（USB 树零枚举）。
@@ -144,16 +150,16 @@ RC003 ──BLE──▶ macOS
 ## 安装与发布
 
 - **安装**：从 GitHub Releases 下载 DMG，拖入「应用程序」。也可源码运行：
-  `./build.sh && .build/rckeys`（构建 + 自检）。
+  `./build.sh && .build/rckeys`（构建；单元测试 `swift test`）。
 - **本地打包**：`scripts/build_app.sh release` —— SPM 双架构通用二进制（Swift 6 语言模式），
   组装 `RCKeys.app`（无 Dock/菜单栏图标），产出 `dist/RCKeys-<版本>-universal.dmg`；
   版本可用 `VERSION=` 覆盖（CI 从 tag 取）。配置 `.secret.env`（见 `.gitignore`，
   含 APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID）
   后自动升级为 **Developer ID 签名 + notarytool 公证 + staple**，否则降级 ad-hoc。
 - **图标**：`swift scripts/make_icon.swift` 可复现生成 `assets/AppIcon.icns`。
-- **发布**：`git tag v0.2.0 && git push --tags` → GitHub Actions
+- **发布**：`git tag vX.Y.Z && git push --tags` → GitHub Actions
   （`.github/workflows/release.yml`）自动构建（仓库 secrets 配置同上组密钥 +
-  p12 相关三项）并创建 Release 附 DMG；push/PR 由 `ci.yml` 跑 `./build.sh` 自检。
+  p12 相关三项）并创建 Release 附 DMG；push/PR 由 `ci.yml` 跑 `swift test` + `./build.sh`。
 - **自动更新**（Sparkle）：内置每日自动检查 + 「服务 ⏷ → 检查更新…」手动触发；
   发布时 CI 用 EdDSA 私钥（GitHub secret `SPARKLE_PRIVATE_ED_KEY`，公钥嵌在
   App 的 Info.plist）签名 DMG 并把 `appcast.xml` 部署到 gh-pages
@@ -161,9 +167,16 @@ RC003 ──BLE──▶ macOS
 
 ## 故障排查
 
-- **遥控器没反应**：菜单栏是否 `◉`；跑 `--fix`；检查两项权限。
-- **按键有动作但系统也在动**：哑化未生效（重连竞态）——暂停再恢复一次。
+- **遥控器没反应**：遥控器**长按 菜单**打开设置，看窗口**底栏状态**——
+  「等待遥控器…」= 蓝牙未连接；「输入监控权限未授予」= 系统设置 → 隐私与安全性 →
+  输入监控，勾选 RCKeys 后**重启 App**；「已暂停」= 「服务 ⏷」里恢复接管；
+  都正常仍无反应则跑 `.build/rckeys --fix` 清理残留映射。
+- **按键有动作但系统也在动**：哑化未生效（蓝牙重连竞态）——「服务 ⏷」暂停再恢复一次。
+- **单击/双击不跟手**：手感设置里调「双击窗口」（窗口越大双击越灵、单击越钝）与
+  「长按判定」；按压超过长按判定的松手视为长按，不会触发单击。
 - **fn 松开弹表情选择**：系统设置 → 键盘 → 「按下 🌐 键时」→「什么都不做」。
+- **重启后 App 没有自动运行**：检查 `~/Library/LaunchAgents/com.kuaner.rckeys.plist`
+  是否存在（App 正式安装并运行过一次后自动生成）。
 
 ## 许可与致谢
 
