@@ -134,6 +134,20 @@ RC003 ──BLE──▶ macOS
 
 均为独立 swift 单文件，`swiftc -O xxx.swift -o xxx` 编译，只读不写设备。
 
+## 安装与发布
+
+- **安装**：从 GitHub Releases 下载 DMG，拖入「应用程序」。也可源码运行：
+  `./build.sh && .build/rckeys`（构建 + 自检）。
+- **本地打包**：`scripts/build_app.sh release` —— swiftc 双架构 + lipo 通用二进制，
+  组装 `RCKeys.app`（无 Dock/菜单栏图标），产出 `dist/RCKeys-<版本>-universal.dmg`；
+  版本可用 `VERSION=` 覆盖（CI 从 tag 取）。配置 `.secret.env`（见 `.gitignore`，
+  含 APPLE_SIGNING_IDENTITY / APPLE_ID / APPLE_APP_SPECIFIC_PASSWORD / APPLE_TEAM_ID）
+  后自动升级为 **Developer ID 签名 + notarytool 公证 + staple**，否则降级 ad-hoc。
+- **图标**：`swift scripts/make_icon.swift` 可复现生成 `assets/AppIcon.icns`。
+- **发布**：`git tag v0.2.0 && git push --tags` → GitHub Actions
+  （`.github/workflows/release.yml`）自动构建（仓库 secrets 配置同上组密钥 +
+  p12 相关三项）并创建 Release 附 DMG；push/PR 由 `ci.yml` 跑 `./build.sh` 自检。
+
 ## 故障排查
 
 - **遥控器没反应**：菜单栏是否 `◉`；跑 `--fix`；检查两项权限。

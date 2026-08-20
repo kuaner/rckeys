@@ -17,7 +17,7 @@ if args.contains("--fix") {
     print(ok ? "已清除 RC003 的残留映射，遥控器恢复系统默认行为。" : "清除失败（hidutil 错误）")
     exit(ok ? 0 : 1)
 }
-if args.contains("--version") { print("rckeys 0.1.0"); exit(0) }
+if args.contains("--version") { print("rckeys 0.2.0"); exit(0) }
 if args.contains("--help") {
     print("""
     rckeys — 小米遥控器 2 Pro (RC003) 按键自定义
@@ -92,6 +92,16 @@ func acquireSingleInstanceLock() -> Int32? {
     return flock(fd, LOCK_EX | LOCK_NB) == 0 ? fd : nil
 }
 
+var pidFileURL: URL { Config.configDir.appendingPathComponent("rckeys.pid") }
+
+/// 唤醒已运行的服务实例：读 pidfile 向其发 SIGUSR1（服务收到后弹出设置窗口）。
+/// 兜底路径——正常情况下 .app 已在运行时 macOS 直接发 reopen 事件，不会走到这里。
+func wakeRunningInstance() {
+    guard let text = try? String(contentsOf: pidFileURL, encoding: .utf8),
+          let pid = Int32(text.trimmingCharacters(in: .whitespacesAndNewlines)), pid > 1 else { return }
+    kill(pid, SIGUSR1)
+}
+
 final class Agent: NSObject, NSApplicationDelegate {
     var engine: GestureEngine!
     var paused = false
@@ -99,12 +109,23 @@ final class Agent: NSObject, NSApplicationDelegate {
     /// 必须持有 dispatch source，否则对象释放即失效（信号/文件监听会被静默丢弃）
     private var signalSources: [DispatchSourceSignal] = []
     private var configFileSource: DispatchSourceFileSystemObject?
+    /// 防 App Nap：持有活动句柄，后台无窗口时定时器不被系统节流
+    private var activity: NSObjectProtocol?
 
     func run() {
         guard acquireSingleInstanceLock() != nil else {
-            print("已有 rckeys 实例在运行，退出。")
+            // 无参数启动（点击 .app）= 唤醒已运行实例的设置窗口；CLI 用途则直接退出
+            if args.isEmpty {
+                wakeRunningInstance()
+                print("rckeys 已在运行，已请求其打开设置窗口。")
+            } else {
+                print("已有 rckeys 实例在运行，退出。")
+            }
             exit(0)
         }
+        try? "\(getpid())".write(to: pidFileURL, atomically: true, encoding: .utf8)
+        activity = ProcessInfo.processInfo.beginActivity(
+            options: [.userInitiated, .idleSystemSleepDisabled], reason: "RCKeys HID 接管服务")
         let app = NSApplication.shared
         app.setActivationPolicy(.accessory)
         app.delegate = self
@@ -152,7 +173,10 @@ final class Agent: NSObject, NSApplicationDelegate {
         listener.start()
         watchSignals()
 
-        print("rckeys 已启动（后台服务，无菜单栏图标）。双击 菜单 键打开设置。配置: \(Config.configURL.path)")
+        // 点击应用图标启动 = 服务 + 设置窗口；run loop 起来后展示
+        DispatchQueue.main.async { ConfigWindowController.shared.show() }
+
+        print("rckeys 已启动（后台服务，无菜单栏/Dock 图标）。双击 菜单 键或再次打开 App 可打开设置。配置: \(Config.configURL.path)")
         app.run()
     }
 
@@ -211,10 +235,17 @@ final class Agent: NSObject, NSApplicationDelegate {
             src.resume()
             signalSources.append(src)
         }
+        // SIGUSR1 = 唤醒：再次启动 .app 的兜底路径（正常运行走 reopen 事件）
+        signal(SIGUSR1, SIG_IGN)
+        let usr1 = DispatchSource.makeSignalSource(signal: SIGUSR1, queue: .main)
+        usr1.setEventHandler { [weak self] in self?.openConfigFromRemote() }
+        usr1.resume()
+        signalSources.append(usr1)
     }
 
     @objc func shutdown() {
         Remap.clear()
+        try? FileManager.default.removeItem(at: pidFileURL)
         print("已清理映射，退出。")
         NSApp.terminate(nil)
     }
@@ -222,6 +253,11 @@ final class Agent: NSObject, NSApplicationDelegate {
     func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
         Remap.clear()
         return .terminateNow
+    }
+
+    /// 已在运行时再次点击 .app：macOS 发 reopen 事件，弹出设置窗口（不新起进程）
+    func applicationShouldHandleReopen(_ sender: NSApplication, hasVisibleWindows flag: Bool) {
+        ConfigWindowController.shared.show()
     }
 }
 

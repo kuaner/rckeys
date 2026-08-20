@@ -11,10 +11,12 @@ RCKeys：小米蓝牙遥控器 2 Pro（RC003）的 macOS 按键自定义工具�
 .build/rckeys --self-test  # 纯逻辑自检（usage 表、配置默认值），无需设备
 .build/rckeys --test       # 12 秒真机试运行：应用哑化、打印解码、自动恢复
 .build/rckeys --fix        # 清理 hidutil 残留映射（调试崩残留时用）
+scripts/build_app.sh release  # 打包 RCKeys.app（通用二进制）+ ad-hoc 签名 + DMG
+swift scripts/make_icon.swift # 重新生成应用图标 assets/AppIcon.icns
 ```
 
 - 无 Xcode 工程、无 SwiftPM、无 lint/格式化配置；只需 Command Line Tools。
-- `.build/` 已 gitignore。
+- `.build/`、`dist/` 已 gitignore。发布：push tag `v*` 触发 GitHub Actions 出 Release。
 - 注释、文档、UI 文案均为中文，保持一致。
 
 ## 架构（核心链路，勿破坏）

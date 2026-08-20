@@ -1,0 +1,81 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Prepare signing keychain
+        env:
+          BUILD_CERTIFICATE_BASE64: ${{ secrets.MACOS_DEVELOPER_ID_P12_BASE64 }}
+          P12_PASSWORD: ${{ secrets.MACOS_DEVELOPER_ID_P12_PASSWORD }}
+          KEYCHAIN_PASSWORD: ${{ secrets.MACOS_KEYCHAIN_PASSWORD }}
+        run: |
+          set -euo pipefail
+          if [ -z "${BUILD_CERTIFICATE_BASE64}" ] || [ -z "${P12_PASSWORD}" ] || [ -z "${KEYCHAIN_PASSWORD}" ]; then
+            echo "::notice::未配置签名 secrets，本次构建使用 ad-hoc 签名（跳过公证）"
+            exit 0
+          fi
+          KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
+          CERT_PATH="${RUNNER_TEMP}/DeveloperID_Application.p12"
+          echo "${BUILD_CERTIFICATE_BASE64}" | base64 --decode > "${CERT_PATH}"
+          security create-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security set-keychain-settings -lut 21600 "${KEYCHAIN_PATH}"
+          security unlock-keychain -p "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security import "${CERT_PATH}" -k "${KEYCHAIN_PATH}" -P "${P12_PASSWORD}" \
+            -T /usr/bin/codesign -T /usr/bin/security
+          security list-keychains -d user -s "${KEYCHAIN_PATH}" login.keychain-db
+          security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "${KEYCHAIN_PASSWORD}" "${KEYCHAIN_PATH}"
+          security find-identity -v -p codesigning "${KEYCHAIN_PATH}"
+
+      - name: Build, sign, notarize, package
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_APP_SPECIFIC_PASSWORD: ${{ secrets.APPLE_APP_SPECIFIC_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/* ]]; then
+            export VERSION="${GITHUB_REF_NAME#v}"
+          fi
+          scripts/build_app.sh release
+
+      - name: Clean temporary keychain
+        if: always()
+        run: |
+          KEYCHAIN_PATH="${RUNNER_TEMP}/build.keychain-db"
+          [ -f "${KEYCHAIN_PATH}" ] && security delete-keychain "${KEYCHAIN_PATH}" || true
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: RCKeys-dmg
+          path: dist/*.dmg
+          if-no-files-found: error
+
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*.dmg
+          generate_release_notes: true
+          body: |
+            ## 安装
+
+            1. 下载 DMG，双击挂载，将 **RCKeys** 拖入「应用程序」；
+            2. 首次启动请在 系统设置 → 隐私与安全性 中授予 **输入监控** 与
+               **辅助功能** 两项权限，然后重新打开 App；
+            3. 启动即弹出设置窗口；关闭窗口 = 进入后台（无菜单栏/Dock 图标），
+               之后用遥控器 **双击菜单** 或再次打开 App 唤出设置；
+               退出请用设置窗口「服务 ⏷ → 清理映射并退出」。
+
+            > 构建已用 Developer ID 签名并经 Apple 公证；若本条发布来自未配置
+            > 签名 secrets 的环境，则为 ad-hoc 签名，首次打开需右键 → 「打开」。

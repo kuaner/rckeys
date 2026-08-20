@@ -2,3 +2,6 @@
 *.log
 .DS_Store
 .zcode/
+dist/
+assets/icon-preview.png
+.secret.env
