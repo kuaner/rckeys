@@ -17,7 +17,7 @@ if args.contains("--fix") {
     print(ok ? "已清除 RC003 的残留映射，遥控器恢复系统默认行为。" : "清除失败（hidutil 错误）")
     exit(ok ? 0 : 1)
 }
-if args.contains("--version") { print("rckeys 0.2.0"); exit(0) }
+if args.contains("--version") { print("rckeys 0.2.1"); exit(0) }
 if args.contains("--help") {
     print("""
     rckeys — 小米遥控器 2 Pro (RC003) 按键自定义
