@@ -34,6 +34,8 @@ public enum ServiceGesture {
     public var onQuit: (@MainActor () -> Void)?
     /// 检查更新
     public var onCheckForUpdates: (@MainActor () -> Void)?
+    /// 进程内配置直通：设置界面保存后立即应用到引擎（不依赖文件监听）
+    public var onConfigSaved: (@MainActor (Config) -> Void)?
 }
 
 /// 开机自启：应用初始化时安装 LaunchAgent（登录 RunAtLoad 自启；崩溃自动拉起，

@@ -135,6 +135,10 @@ enum RCKeysApp {
         ServiceHub.shared.onTogglePause = { [weak self] in self?.togglePause() }
         ServiceHub.shared.onReloadConfig = { [weak self] in self?.reloadConfigNow() }
         ServiceHub.shared.onQuit = { [weak self] in self?.shutdown() }
+        // 设置界面保存 → 引擎即时生效（进程内直通，绕开文件监听）
+        ServiceHub.shared.onConfigSaved = { [weak self] cfg in
+            self?.engine.updateConfig(cfg)
+        }
         Updater.start()
         ServiceHub.shared.onCheckForUpdates = { Updater.check() }
 
@@ -205,12 +209,14 @@ enum RCKeysApp {
         }
     }
 
+    /// 监听配置目录而非文件本身：UI/编辑器多为原子写（临时文件 rename 顶替），
+    /// 旧 inode 上的 .write 永远不触发；目录的 .write 在条目增删改名时必触发。
     private func watchConfigFile() {
-        let fd = open(Config.configURL.path, O_EVTONLY)
+        let fd = open(Config.configDir.path, O_EVTONLY)
         guard fd >= 0 else { return }
         let src = DispatchSource.makeFileSystemObjectSource(fileDescriptor: fd, eventMask: [.write], queue: .main)
         src.setEventHandler { [weak self] in
-            // 防编辑器多次原子写触发抖动：延迟 300ms 合并（主队列送达）
+            // 防多次原子写触发抖动：延迟 300ms 合并（主队列送达）
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
                 MainActor.assumeIsolated {
                     guard let self, let cfg = Config.reload() else { return }

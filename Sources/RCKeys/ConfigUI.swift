@@ -124,6 +124,8 @@ enum TriggerKind: String, CaseIterable, Identifiable {
         if let data = try? JSONEncoder.pretty.encode(c) {
             try? data.write(to: Config.configURL, options: .atomic)
             lastSaved = c
+            // 进程内直通：立即应用到引擎（文件监听只兜底外部修改）
+            ServiceHub.shared.onConfigSaved?(c)
             savedFlash = true
             let token = UUID()
             flashToken = token
