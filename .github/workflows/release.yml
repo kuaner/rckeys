@@ -77,5 +77,70 @@ jobs:
                之后用遥控器 **双击 TV** 或再次打开 App 唤出设置；
                退出请用设置窗口「服务 ⏷ → 清理映射并退出」。
 
-            > 构建已用 Developer ID 签名并经 Apple 公证；若本条发布来自未配置
-            > 签名 secrets 的环境，则为 ad-hoc 签名，首次打开需右键 → 「打开」。
+            > 已内置 Sparkle 自动更新：日常自动检查，也可在「服务 ⏷ → 检查更新…」手动触发。
+
+      - name: Generate and deploy Sparkle appcast
+        if: startsWith(github.ref, 'refs/tags/')
+        env:
+          SPARKLE_PRIVATE_ED_KEY: ${{ secrets.SPARKLE_PRIVATE_ED_KEY }}
+        run: |
+          set -euo pipefail
+          TAG="${GITHUB_REF_NAME}"
+          VERSION="${TAG#v}"
+          DMG="dist/RCKeys-${VERSION}-universal.dmg"
+          URL="https://github.com/kuaner/rckeys/releases/download/${TAG}/RCKeys-${VERSION}-universal.dmg"
+          SIZE=$(stat -f%z "$DMG")
+
+          SPARKLE_VERSION="2.9.1"
+          curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" -o /tmp/sparkle.tar.xz
+          mkdir -p /tmp/sparkle-dist
+          tar xf /tmp/sparkle.tar.xz -C /tmp/sparkle-dist --strip-components=1
+          SIGN_UPDATE="/tmp/sparkle-dist/bin/sign_update"
+          chmod +x "$SIGN_UPDATE"
+
+          SIG=$(echo "$SPARKLE_PRIVATE_ED_KEY" | "$SIGN_UPDATE" --ed-key-file - -p "$DMG")
+          if [ -z "$SIG" ]; then
+            echo "::warning::appcast 签名失败，跳过部署"
+            exit 0
+          fi
+          echo "edSignature: ${SIG}"
+
+          PUB_DATE=$(date -u +"%a, %d %b %Y %H:%M:%S +0000")
+          cat > /tmp/appcast.xml <<APPLECAST
+          <?xml version="1.0" encoding="utf-8"?>
+          <rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+            <channel>
+              <title>RCKeys</title>
+              <link>https://kuaner.github.io/rckeys/appcast.xml</link>
+              <description>RCKeys Updates</description>
+              <language>zh-CN</language>
+              <item>
+                <title>RCKeys ${VERSION}</title>
+                <pubDate>${PUB_DATE}</pubDate>
+                <enclosure
+                  url="${URL}"
+                  sparkle:version="${VERSION}"
+                  sparkle:shortVersionString="${VERSION}"
+                  sparkle:edSignature="${SIG}"
+                  length="${SIZE}"
+                  type="application/octet-stream"
+                />
+                <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+              </item>
+            </channel>
+          </rss>
+          APPLECAST
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git fetch origin gh-pages || true
+          if git rev-parse --verify origin/gh-pages >/dev/null 2>&1; then
+            git checkout gh-pages
+          else
+            git checkout --orphan gh-pages
+            git rm -rf --quiet . || true
+          fi
+          cp /tmp/appcast.xml appcast.xml
+          git add appcast.xml
+          git commit -m "update appcast for ${TAG}" || true
+          git push origin gh-pages

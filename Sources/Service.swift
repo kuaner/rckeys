@@ -30,6 +30,8 @@ final class ServiceHub {
     var onTogglePause: (() -> Void)?
     var onReloadConfig: (() -> Void)?
     var onQuit: (() -> Void)?
+    /// 检查更新（Sparkle 仅在打包构建中可用）
+    var onCheckForUpdates: (() -> Void)?
 }
 
 /// 开机自启：应用初始化时安装 LaunchAgent（登录 RunAtLoad 自启；崩溃自动拉起，

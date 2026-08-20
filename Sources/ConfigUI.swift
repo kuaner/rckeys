@@ -265,6 +265,13 @@ struct ConfigEditorView: View {
                         Button("重载配置") {
                             ServiceHub.shared.onReloadConfig?()
                         }
+                        Button("检查更新…") {
+                            if ServiceHub.shared.onCheckForUpdates != nil {
+                                ServiceHub.shared.onCheckForUpdates?()
+                            } else {
+                                showNotice("此构建未包含更新组件（开发构建）")
+                            }
+                        }
                         Button("编辑配置文件…") {
                             NSWorkspace.shared.open(Config.configURL)
                         }

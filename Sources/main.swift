@@ -169,6 +169,10 @@ final class Agent: NSObject, NSApplicationDelegate {
         ServiceHub.shared.onTogglePause = { [weak self] in self?.togglePause() }
         ServiceHub.shared.onReloadConfig = { [weak self] in self?.reloadConfigNow() }
         ServiceHub.shared.onQuit = { [weak self] in self?.shutdown() }
+#if canImport(Sparkle)
+        Updater.start()
+        ServiceHub.shared.onCheckForUpdates = { Updater.check() }
+#endif
 
         watchConfigFile()
         if !listener.start() {

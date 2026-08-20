@@ -5,3 +5,4 @@
 dist/
 assets/icon-preview.png
 .secret.env
+.sparkle-cache/

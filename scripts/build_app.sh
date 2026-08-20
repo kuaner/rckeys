@@ -13,6 +13,13 @@ DIST="dist"
 APP_DIR="${DIST}/${APP_NAME}.app"
 DMG_PATH="${DIST}/RCKeys-${VERSION}-universal.dmg"
 
+# Sparkle 自动更新
+SPARKLE_VERSION="2.9.1"
+SPARKLE_CACHE=".sparkle-cache"
+# EdDSA 公钥（私钥在钥匙串 / GitHub secret SPARKLE_PRIVATE_ED_KEY，用于 appcast 签名）
+SPARKLE_PUBLIC_ED_KEY="jd8kYhK9YOkMi7ch2M66E8ndRf0ReEGvwSrFLQOdEk0="
+SU_FEED_URL="https://kuaner.github.io/rckeys/appcast.xml"
+
 G='\033[0;32m'; Y='\033[1;33m'; NC='\033[0m'
 log() { echo -e "${G}$1${NC}"; }
 warn() { echo -e "${Y}$1${NC}"; }
@@ -20,18 +27,33 @@ warn() { echo -e "${Y}$1${NC}"; }
 # 本地密钥（.secret.env，gitignore）：配置了则 Developer ID 签名 + 公证，否则 ad-hoc
 [ -f .secret.env ] && source .secret.env
 
+# Sparkle 二进制发行版缓存（含通用 Sparkle.framework 与 sign_update 工具）
+ensure_sparkle() {
+    if [ ! -d "${SPARKLE_CACHE}/Sparkle.framework" ]; then
+        log "下载 Sparkle ${SPARKLE_VERSION}…"
+        mkdir -p "${SPARKLE_CACHE}"
+        curl -sL "https://github.com/sparkle-project/Sparkle/releases/download/${SPARKLE_VERSION}/Sparkle-${SPARKLE_VERSION}.tar.xz" \
+            -o "${SPARKLE_CACHE}/sparkle.tar.xz"
+        tar xf "${SPARKLE_CACHE}/sparkle.tar.xz" -C "${SPARKLE_CACHE}"
+        rm -f "${SPARKLE_CACHE}/sparkle.tar.xz"
+    fi
+}
+
 build() {
+    ensure_sparkle
     log "=== 构建 ${APP_NAME} v${VERSION}（arm64 + x86_64 通用） ==="
+    local fw="-F ${SPARKLE_CACHE} -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks"
     mkdir -p .build/universal
-    swiftc -O -target "arm64-apple-macos${MIN_MACOS}" Sources/*.swift -o .build/universal/rckeys-arm64
-    swiftc -O -target "x86_64-apple-macos${MIN_MACOS}" Sources/*.swift -o .build/universal/rckeys-x64
+    swiftc -O -target "arm64-apple-macos${MIN_MACOS}" ${fw} Sources/*.swift -o .build/universal/rckeys-arm64
+    swiftc -O -target "x86_64-apple-macos${MIN_MACOS}" ${fw} Sources/*.swift -o .build/universal/rckeys-x64
     lipo -create .build/universal/rckeys-arm64 .build/universal/rckeys-x64 \
         -output .build/universal/rckeys-universal
 
     log "=== 组装 ${APP_DIR} ==="
     rm -rf "${APP_DIR}"
-    mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources"
+    mkdir -p "${APP_DIR}/Contents/MacOS" "${APP_DIR}/Contents/Resources" "${APP_DIR}/Contents/Frameworks"
     cp .build/universal/rckeys-universal "${APP_DIR}/Contents/MacOS/${APP_NAME}"
+    cp -R "${SPARKLE_CACHE}/Sparkle.framework" "${APP_DIR}/Contents/Frameworks/"
     cp assets/AppIcon.icns "${APP_DIR}/Contents/Resources/"
     cp Resources/RC003-remote-photo.png "${APP_DIR}/Contents/Resources/"
     cat > "${APP_DIR}/Contents/Info.plist" <<PLIST
@@ -52,21 +74,39 @@ build() {
     <key>NSHumanReadableCopyright</key><string>MIT License</string>
     <key>NSSupportsAutomaticTermination</key><false/>
     <key>NSSupportsSuddenTermination</key><false/>
+    <key>SUFeedURL</key><string>${SU_FEED_URL}</string>
+    <key>SUPublicEDKey</key><string>${SPARKLE_PUBLIC_ED_KEY}</string>
+    <key>SUEnableAutomaticChecks</key><true/>
+    <key>SUScheduledCheckInterval</key><integer>86400</integer>
 </dict>
 </plist>
 PLIST
     log "${APP_DIR} 构建完成"
 }
 
+# Sparkle 框架签名：公证要求框架内每个嵌套组件（XPC 服务、子 app、辅助二进制）
+# 都单独带 Developer ID 签名 + 时间戳，须由内往外逐个签，最后签框架本体
+sign_sparkle() {
+    local id="$1"
+    local b="${APP_DIR}/Contents/Frameworks/Sparkle.framework/Versions/B"
+    for nested in "$b/XPCServices/Downloader.xpc" "$b/XPCServices/Installer.xpc" \
+                  "$b/Updater.app" "$b/Autoupdate"; do
+        [ -e "$nested" ] && codesign --force --options runtime --timestamp --sign "$id" "$nested"
+    done
+    codesign --force --options runtime --timestamp --sign "$id" "$b/../.."
+}
+
 sign() {
     if [ -n "${APPLE_SIGNING_IDENTITY:-}" ]; then
         log "=== 签名（Developer ID） ==="
+        sign_sparkle "${APPLE_SIGNING_IDENTITY}"
         codesign --force --options runtime --timestamp \
             --sign "${APPLE_SIGNING_IDENTITY}" "${APP_DIR}"
         codesign --verify --strict "${APP_DIR}"
         log "Developer ID 签名通过"
     else
         warn "未配置 APPLE_SIGNING_IDENTITY，降级为 ad-hoc 签名"
+        sign_sparkle "-"
         codesign --force --sign - "${APP_DIR}"
         codesign --verify --strict "${APP_DIR}"
         log "ad-hoc 签名通过"

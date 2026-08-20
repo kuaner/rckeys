@@ -39,6 +39,7 @@ kIOReturnNotPrivileged）。这是设计决策，不是待修 bug。
 | `Sources/Gesture.swift` | 手势引擎：tap/hold/repeat/double，连发由引擎定时器驱动；菜单 double 系统保留（onSystemGesture 呼出设置） |
 | `Sources/Actions.swift` | 动作执行：CGEvent 按键、NX_SYSDEFINED 媒体键、鼠标、open、shell |
 | `Sources/Service.swift` | 后台服务枢纽：ServiceStatus（对话框底栏状态）、ServiceHub（对话框菜单 → Agent 动作）、系统保留呼出手势（双击TV）、AutoStart（LaunchAgent 自启安装） |
+| `Sources/Updater.swift` | Sparkle 自动更新（`#if canImport(Sparkle)`——仅打包构建含更新组件，开发构建 `build.sh` 无框架自动裁剪） |
 | `Sources/Config.swift` | RemoteKey 枚举(13 键)、Action/KeyConfig 模型；配置存 `~/Library/Application Support/RCKeys/config.json` |
 | `Sources/ConfigUI.swift` | 可视化配置窗口：触发卡+单编辑器布局、自动保存（防抖写盘→热加载）、手感设置 Sheet |
 | `Sources/ActionEditor.swift` | 动作类型卡与各参数编辑器、键帽渲染、可读描述 `Pretty`、真键盘录制 `ComboRecorder` |

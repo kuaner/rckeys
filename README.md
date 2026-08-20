@@ -153,6 +153,10 @@ RC003 ──BLE──▶ macOS
 - **发布**：`git tag v0.2.0 && git push --tags` → GitHub Actions
   （`.github/workflows/release.yml`）自动构建（仓库 secrets 配置同上组密钥 +
   p12 相关三项）并创建 Release 附 DMG；push/PR 由 `ci.yml` 跑 `./build.sh` 自检。
+- **自动更新**（Sparkle）：内置每日自动检查 + 「服务 ⏷ → 检查更新…」手动触发；
+  发布时 CI 用 EdDSA 私钥（GitHub secret `SPARKLE_PRIVATE_ED_KEY`，公钥嵌在
+  App 的 Info.plist）签名 DMG 并把 `appcast.xml` 部署到 gh-pages
+  （`https://kuaner.github.io/rckeys/appcast.xml`），App 内置该更新源。
 
 ## 故障排查
 
