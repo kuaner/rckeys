@@ -142,12 +142,18 @@ struct TriggerEditor: View {
 
     private var noneEditor: some View {
         VStack(spacing: 10) {
-            Text(action?.type == "none"
-                 ? "此触发当前为「无动作」：引擎不执行任何操作。"
-                 : "「无动作」= 手势触发时不执行任何操作。")
-                .font(.callout).foregroundStyle(.secondary)
-            if action?.type != "none" {
-                Button("设为无动作") { action = .none }
+            if action?.type == "none" {
+                Label("此触发已设为「无动作」：手势触发时不执行任何操作（已保存）",
+                      systemImage: "checkmark.circle.fill")
+                    .font(.callout).foregroundStyle(.green)
+                Text("点「清除」回到未配置状态。").font(.caption).foregroundStyle(.secondary)
+            } else {
+                Text("「无动作」= 手势触发时不执行任何操作。")
+                    .font(.callout).foregroundStyle(.secondary)
+                Text(action == nil ? "此触发当前未配置" : "此触发当前有配置：\(Pretty.action(action))")
+                    .font(.caption).foregroundStyle(.secondary)
+                Button("设为无动作") { action = Action.none } // 显式类型：.none 会被解析成 Optional.nil
+                    .buttonStyle(.borderedProminent)
             }
         }
         .frame(maxWidth: .infinity)
