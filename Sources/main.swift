@@ -27,7 +27,7 @@ if args.contains("--version") { print("rckeys \(AppInfo.version)"); exit(0) }
 if args.contains("--help") {
     print("""
     rckeys — 小米遥控器 2 Pro (RC003) 按键自定义
-    无参数     启动后台服务（无菜单栏图标；遥控器双击 TV 键打开设置）
+    无参数     启动后台服务（无菜单栏图标；遥控器长按 菜单 键打开设置）
     --test     12 秒试运行（应用映射并打印按键解码，不注入动作）
     --fix      清理崩溃残留的哑化映射
     配置文件:  \(Config.configURL.path)
@@ -189,7 +189,7 @@ final class Agent: NSObject, NSApplicationDelegate {
         // 点击应用图标启动 = 服务 + 设置窗口；run loop 起来后展示
         DispatchQueue.main.async { ConfigWindowController.shared.show() }
 
-        print("rckeys 已启动（后台服务，无菜单栏/Dock 图标）。双击 TV 键或再次打开 App 可打开设置。配置: \(Config.configURL.path)")
+        print("rckeys 已启动（后台服务，无菜单栏/Dock 图标）。长按 菜单 键或再次打开 App 可打开设置。配置: \(Config.configURL.path)")
         app.run()
     }
 

@@ -4,13 +4,13 @@ import AppKit
 /// 服务状态与控制：无菜单栏图标后，状态展示与服务操作都收敛到设置对话框。
 /// Agent 启动时把真实动作注入 ServiceHub 闭包；对话框菜单/底栏读写 status。
 
-/// 呼出设置对话框的系统保留手势：双击 TV 键。
-/// 手势引擎强制生效、不可被用户配置覆盖（用户配了 tv.double 也以系统手势优先）；
-/// 配置界面锁定该触发位。TV 键单击因此会延迟到双击窗口结束才触发（引擎既有行为）。
-/// （曾用双击菜单，但菜单单击默认是右键、快速连点右键常见，冲突；TV 双击默认空置。）
+/// 呼出设置对话框的系统保留手势：长按 菜单 键（按住超过 holdMs 触发）。
+/// 时长判定与单击零歧义、双方零延迟——曾用双击 TV，但单击/双击共存必有
+/// 时间窗歧义（连点单击会误触双击），故改为长按；菜单语义也贴切。
+/// 菜单键的长按与连发位在配置界面锁定（两者共享"按住"语义，均被系统占用）。
 enum ServiceGesture {
-    static let key: RemoteKey = .tv
-    static let kind = "double"
+    static let key: RemoteKey = .menu
+    static let kind = "hold"
 }
 
 final class ServiceStatus: ObservableObject {

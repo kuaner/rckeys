@@ -162,7 +162,7 @@ struct ConfigEditorView: View {
 
     private var footerBar: some View {
         HStack(spacing: 8) {
-            Text("遥控器：双击 TV 键打开此窗口")
+            Text("遥控器：长按 菜单 键打开此窗口")
             Spacer()
             Text(service.statusLine)
             if !service.note.isEmpty {
@@ -296,14 +296,19 @@ struct ConfigEditorView: View {
 
                 HStack(spacing: 10) {
                     ForEach(TriggerKind.allCases) { kind in
-                        // 菜单键的双击 = 系统保留手势（呼出设置），锁定不可配置
-                        let reserved = (kind == .double && selected == ServiceGesture.key)
+                        // 菜单键：长按 = 系统保留手势（呼出设置），连发与长按共享
+                        // "按住"语义，一并锁定；其余键（含 TV 双击）完全自由
+                        let reservedHold = (kind == .hold && selected == ServiceGesture.key)
+                        let reservedRepeat = (kind == .repeatAction && selected == ServiceGesture.key)
                         TriggerCard(kind: kind,
-                                    action: reserved ? nil : kind.action(in: currentKC),
-                                    isSelected: selectedTrigger == kind && !reserved,
-                                    systemText: reserved ? "呼出设置（系统）" : nil) {
-                            if reserved {
-                                showNotice("双击「TV」为系统保留手势（呼出设置），不可修改")
+                                    action: (reservedHold || reservedRepeat) ? nil : kind.action(in: currentKC),
+                                    isSelected: selectedTrigger == kind && !(reservedHold || reservedRepeat),
+                                    systemText: reservedHold ? "呼出设置（系统）"
+                                                    : reservedRepeat ? "长按已被系统占用" : nil) {
+                            if reservedHold {
+                                showNotice("长按「菜单」为系统保留手势（呼出设置），不可修改")
+                            } else if reservedRepeat {
+                                showNotice("菜单的长按已被系统手势占用，连发不可用")
                             } else {
                                 selectedTrigger = kind
                             }
@@ -335,9 +340,15 @@ struct ConfigEditorView: View {
 
     /// 写入当前 (键, 触发位) 的动作；系统保留位拒写；配置长按/连发时自动清掉另一方并提示。
     private func writeAction(_ newValue: Action?) {
-        if selected == ServiceGesture.key && selectedTrigger == .double {
-            showNotice("双击「TV」为系统保留手势（呼出设置），不可修改")
-            return
+        if selected == ServiceGesture.key {
+            if selectedTrigger == .hold {
+                showNotice("长按「菜单」为系统保留手势（呼出设置），不可修改")
+                return
+            }
+            if selectedTrigger == .repeatAction {
+                showNotice("菜单的长按已被系统手势占用，连发不可用")
+                return
+            }
         }
         var kc = currentKC
         kc[keyPath: selectedTrigger.keyPath] = newValue

@@ -61,7 +61,10 @@ final class GestureEngine {
         s.tapTask?.cancel(); s.tapTask = nil
 
         let cfg = configs[k]
-        let holdDelay = (cfg?.hold != nil) ? timings.holdMs
+        // 系统保留键（长按菜单=呼出设置）：无论用户是否配置，都按 holdMs 起计时
+        let reserved = (k == ServiceGesture.key)
+        let holdDelay = reserved ? timings.holdMs
+            : (cfg?.hold != nil) ? timings.holdMs
             : ((cfg?.repeatAction != nil) ? timings.repeatDelayMs : -1)
         guard holdDelay > 0 else { return }
         let t = DispatchWorkItem { [weak self] in self?.holdReached(k) }
@@ -73,6 +76,11 @@ final class GestureEngine {
         let s = state(k)
         guard s.down, !s.holdFired else { return }
         s.holdFired = true
+        // 系统保留手势：长按菜单 = 呼出设置，优先于任何用户配置
+        if k == ServiceGesture.key {
+            onSystemGesture?(k, "hold")
+            return
+        }
         if let a = configs[k]?.hold {
             // 裸修饰键：按下持续到松手（供"长按 fn 说话"类场景），不走一次性 fire
             if a.type == "key", Actions.isBareModifier(a.combo), let combo = a.combo {
@@ -113,19 +121,13 @@ final class GestureEngine {
         s.repeatTask?.cancel(); s.repeatTask = nil
         guard !s.holdFired else { return }
 
-        // 双击判定：只影响配置了 double 的键（其余键 tap 零延迟直发）；
-        // 系统保留键（双击菜单=呼出设置）强制走双击窗口，命中即走系统回调
-        let reserved = (k == ServiceGesture.key)
-        if configs[k]?.double != nil || reserved {
+        // 双击判定：只影响配置了 double 的键（其余键 tap 零延迟直发）
+        if configs[k]?.double != nil {
             let now = DispatchTime.now()
             if let last = s.lastTapAt,
                msBetween(last, now) < timings.doubleMs {
                 s.lastTapAt = nil
-                if reserved {
-                    onSystemGesture?(k, "double")
-                } else {
-                    fire(configs[k]!.double!, k, "double")
-                }
+                fire(configs[k]!.double!, k, "double")
                 return
             }
             s.lastTapAt = now

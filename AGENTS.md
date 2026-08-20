@@ -36,9 +36,9 @@ kIOReturnNotPrivileged）。这是设计决策，不是待修 bug。
 | `Sources/main.swift` | CLI 子命令、组件装配、自检 |
 | `Sources/Remap.swift` | hidutil 哑化的 apply/clear（`--matching` 限定 VID 0x2717/PID 0x32B8） |
 | `Sources/HID.swift` | RC003 usage 表 + KeyListener（IOHIDManager 原始报告回调 → 按键边沿） |
-| `Sources/Gesture.swift` | 手势引擎：tap/hold/repeat/double，连发由引擎定时器驱动；菜单 double 系统保留（onSystemGesture 呼出设置） |
+| `Sources/Gesture.swift` | 手势引擎：tap/hold/repeat/double，连发由引擎定时器驱动；长按菜单系统保留（onSystemGesture 呼出设置，菜单 hold/repeat 位锁定） |
 | `Sources/Actions.swift` | 动作执行：CGEvent 按键、NX_SYSDEFINED 媒体键、鼠标、open、shell |
-| `Sources/Service.swift` | 后台服务枢纽：ServiceStatus（对话框底栏状态）、ServiceHub（对话框菜单 → Agent 动作）、系统保留呼出手势（双击TV）、AutoStart（LaunchAgent 自启安装） |
+| `Sources/Service.swift` | 后台服务枢纽：ServiceStatus（对话框底栏状态）、ServiceHub（对话框菜单 → Agent 动作）、系统保留呼出手势（长按菜单）、AutoStart（LaunchAgent 自启安装） |
 | `Sources/Updater.swift` | Sparkle 自动更新（`#if canImport(Sparkle)`——仅打包构建含更新组件，开发构建 `build.sh` 无框架自动裁剪） |
 | `Sources/Config.swift` | RemoteKey 枚举(13 键)、Action/KeyConfig 模型；配置存 `~/Library/Application Support/RCKeys/config.json` |
 | `Sources/ConfigUI.swift` | 可视化配置窗口：触发卡+单编辑器布局、自动保存（防抖写盘→热加载）、手感设置 Sheet |
