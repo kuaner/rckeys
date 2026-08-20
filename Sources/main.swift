@@ -21,7 +21,7 @@ if args.contains("--version") { print("rckeys 0.1.0"); exit(0) }
 if args.contains("--help") {
     print("""
     rckeys — 小米遥控器 2 Pro (RC003) 按键自定义
-    无参数     启动菜单栏常驻接管
+    无参数     启动后台服务（无菜单栏图标；遥控器双击 菜单 键打开设置）
     --test     12 秒试运行（应用映射并打印按键解码，不注入动作）
     --fix      清理崩溃残留的哑化映射
     配置文件:  \(Config.configURL.path)
@@ -53,6 +53,9 @@ if args.contains("--self-test") {
            && Actions.codes["a"] == CGKeyCode(kVK_ANSI_A), "键码表")
     // 5) 媒体键
     expect(Actions.mediaKeys["volume_up"] == 0 && Actions.mediaKeys["mute"] == 7, "媒体键码")
+    // 6) UI 可读描述与键帽解析（修饰键 = 符号 + 名称，与实体键盘印字一致）
+    expect(Pretty.action(.key("ctrl+cmd+q")) == "⌃ control ⌘ command Q" && Pretty.action(.media("volume_up")) == "音量+", "动作可读描述")
+    expect(Pretty.comboParts("cmd+shift+tab") == ["⌘ command", "⇧ shift", "⇥"] && Pretty.comboParts("fn") == ["🌐 fn"], "键帽解析")
     exit(failed == 0 ? 0 : 1)
 }
 
@@ -90,9 +93,12 @@ func acquireSingleInstanceLock() -> Int32? {
 }
 
 final class Agent: NSObject, NSApplicationDelegate {
-    let status = StatusBarController()
     var engine: GestureEngine!
     var paused = false
+    private var lastConfigOpen = DispatchTime(uptimeNanoseconds: 0)
+    /// 必须持有 dispatch source，否则对象释放即失效（信号/文件监听会被静默丢弃）
+    private var signalSources: [DispatchSourceSignal] = []
+    private var configFileSource: DispatchSourceFileSystemObject?
 
     func run() {
         guard acquireSingleInstanceLock() != nil else {
@@ -114,14 +120,16 @@ final class Agent: NSObject, NSApplicationDelegate {
             print("[动作] \(key.rawValue).\(kind) -> \(Actions.describe(action))")
             Actions.perform(action)
         }
+        // 系统保留手势：双击菜单 → 呼出设置
+        engine.onSystemGesture = { [weak self] _, _ in self?.openConfigFromRemote() }
 
         let listener = KeyListener()
         listener.log = { print($0) }
         listener.onDevice = { [weak self] connected in
             guard let self else { return }
-            self.status.setConnected(connected)
+            ServiceHub.shared.status.connected = connected
             if connected && !self.paused {
-                self.status.setNote(Remap.apply() ? "" : "映射应用失败（--fix 可清理）")
+                ServiceHub.shared.status.note = Remap.apply() ? "" : "映射应用失败（--fix 可清理）"
                 print("遥控器接入，哑化映射已重新应用")
             } else if connected && self.paused {
                 print("遥控器接入（已暂停，不接管）")
@@ -136,39 +144,47 @@ final class Agent: NSObject, NSApplicationDelegate {
             if down { self.engine.keyDown(key) } else { self.engine.keyUp(key) }
         }
 
-        status.onTogglePause = { [weak self] in
-            guard let self else { return }
-            self.paused.toggle()
-            self.engine.reset()
-            if self.paused {
-                Remap.clear()
-                print("已暂停：映射清除，遥控器恢复系统默认")
-            } else {
-                Remap.apply()
-                print("已恢复接管")
-            }
-            self.status.setPaused(self.paused)
-        }
-        status.onOpenConfig = { ConfigWindowController.shared.show() }
-        status.onReloadConfig = { [weak self] in
-            guard let self else { return }
-            if let cfg = Config.reload() {
-                self.engine.updateConfig(cfg)
-                print("配置已重载")
-            } else {
-                print("配置重载失败：JSON 解析错误，保留旧配置")
-            }
-        }
-        status.onQuit = { [weak self] in
-            self?.shutdown()
-        }
+        ServiceHub.shared.onTogglePause = { [weak self] in self?.togglePause() }
+        ServiceHub.shared.onReloadConfig = { [weak self] in self?.reloadConfigNow() }
+        ServiceHub.shared.onQuit = { [weak self] in self?.shutdown() }
 
         watchConfigFile()
         listener.start()
         watchSignals()
 
-        print("rckeys 已启动。配置: \(Config.configURL.path)")
+        print("rckeys 已启动（后台服务，无菜单栏图标）。双击 菜单 键打开设置。配置: \(Config.configURL.path)")
         app.run()
+    }
+
+    /// 双击菜单呼出设置窗口（1 秒防抖）
+    private func openConfigFromRemote() {
+        let now = DispatchTime.now()
+        guard now.uptimeNanoseconds > lastConfigOpen.uptimeNanoseconds + 1_000_000_000 else { return }
+        lastConfigOpen = now
+        ConfigWindowController.shared.show()
+        print("双击菜单呼出设置界面")
+    }
+
+    private func togglePause() {
+        paused.toggle()
+        engine.reset()
+        if paused {
+            Remap.clear()
+            print("已暂停：映射清除，遥控器恢复系统默认")
+        } else {
+            Remap.apply()
+            print("已恢复接管")
+        }
+        ServiceHub.shared.status.paused = paused
+    }
+
+    private func reloadConfigNow() {
+        if let cfg = Config.reload() {
+            engine.updateConfig(cfg)
+            print("配置已重载")
+        } else {
+            print("配置重载失败：JSON 解析错误，保留旧配置")
+        }
     }
 
     private func watchConfigFile() {
@@ -184,19 +200,17 @@ final class Agent: NSObject, NSApplicationDelegate {
             }
         }
         src.resume()
+        configFileSource = src
     }
 
     private func watchSignals() {
-        for sig in [SIGTERM, SIGHUP] {
+        for sig in [SIGTERM, SIGHUP, SIGINT] {
             signal(sig, SIG_IGN)
             let src = DispatchSource.makeSignalSource(signal: sig, queue: .main)
             src.setEventHandler { [weak self] in self?.shutdown() }
             src.resume()
+            signalSources.append(src)
         }
-        signal(SIGINT, SIG_IGN)
-        let intSrc = DispatchSource.makeSignalSource(signal: SIGINT, queue: .main)
-        intSrc.setEventHandler { [weak self] in self?.shutdown() }
-        intSrc.resume()
     }
 
     @objc func shutdown() {

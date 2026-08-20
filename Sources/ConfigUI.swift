@@ -1,8 +1,10 @@
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
+import Combine
 
-// 可视化配置界面：左侧遥控器实拍图 + 热点选键，右侧编辑四个触发位。
+// 可视化配置界面：三层认知 —— 左侧选键（实拍图 + 热点）、
+// 右上 4 张触发卡（摘要 + 点选）、右下只编辑选中的那一个触发。
+// 全局手感设置独立成 Sheet；改动自动保存（防抖写盘 → 主程序文件监听热加载）。
 // 热点坐标与照片源自 HD838A/remote-mic-app（GPL-3.0）的 RemoteMappingLayout，致谢。
 
 // MARK: - 窗口管理
@@ -14,7 +16,7 @@ final class ConfigWindowController {
     func show() {
         if window == nil {
             let w = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 880, height: 600),
+                contentRect: NSRect(x: 0, y: 0, width: 920, height: 620),
                 styleMask: [.titled, .closable, .miniaturizable, .resizable],
                 backing: .buffered, defer: false)
             w.title = "RCKeys 按键配置"
@@ -60,23 +62,116 @@ let remotePhoto: NSImage? = {
     return NSImage(contentsOf: url)
 }()
 
+// MARK: - 触发位
+
+enum TriggerKind: String, CaseIterable, Identifiable {
+    case tap, hold, double
+    case repeatAction = "repeat"
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .tap: return "单击"
+        case .hold: return "长按"
+        case .double: return "双击"
+        case .repeatAction: return "连发"
+        }
+    }
+
+    var keyPath: WritableKeyPath<KeyConfig, Action?> {
+        switch self {
+        case .tap: return \.tap
+        case .hold: return \.hold
+        case .double: return \.double
+        case .repeatAction: return \.repeatAction
+        }
+    }
+
+    func action(in kc: KeyConfig) -> Action? { kc[keyPath: keyPath] }
+}
+
+// MARK: - 视图模型（自动保存：防抖 500ms 写盘，主程序文件监听随后热加载）
+
+final class ConfigViewModel: ObservableObject {
+    @Published var cfg: Config
+    @Published var savedFlash = false
+    private var lastSaved: Config
+    private var cancellables = Set<AnyCancellable>()
+    private var flashToken = UUID()
+
+    init() {
+        let (cfg, _) = Config.loadOrDefault()
+        self.cfg = cfg
+        self.lastSaved = cfg
+        $cfg
+            .dropFirst()
+            .removeDuplicates()
+            .debounce(for: .milliseconds(500), scheduler: RunLoop.main)
+            .sink { [weak self] in self?.persist($0) }
+            .store(in: &cancellables)
+    }
+
+    private func persist(_ c: Config) {
+        guard c != lastSaved else { return }
+        try? FileManager.default.createDirectory(at: Config.configDir, withIntermediateDirectories: true)
+        if let data = try? JSONEncoder.pretty.encode(c) {
+            try? data.write(to: Config.configURL, options: .atomic)
+            lastSaved = c
+            savedFlash = true
+            let token = UUID()
+            flashToken = token
+            DispatchQueue.main.asyncAfter(deadline: .now() + 1.5) { [weak self] in
+                if self?.flashToken == token { self?.savedFlash = false }
+            }
+        }
+    }
+}
+
 // MARK: - 主界面
 
 struct ConfigEditorView: View {
-    @State private var cfg: Config = Config.loadOrDefault().0
+    @StateObject private var model = ConfigViewModel()
+    @ObservedObject private var service = ServiceHub.shared.status
     @State private var selected: RemoteKey = .ok
+    @State private var selectedTrigger: TriggerKind = .tap
     @State private var hovered: RemoteKey?
-    @State private var savedFlash = false
+    @State private var notice: String?
+    @State private var noticeToken = UUID()
+    @State private var showSettings = false
 
     var body: some View {
-        HStack(spacing: 0) {
-            remotePane
-                .frame(width: 300)
-                .background(Color(nsColor: .windowBackgroundColor))
-            Divider()
-            editorPane
-                .frame(minWidth: 420)
+        VStack(spacing: 0) {
+            HStack(spacing: 0) {
+                remotePane
+                    .frame(width: 300)
+                    .background(Color(nsColor: .windowBackgroundColor))
+                Divider()
+                editorPane
+                    .frame(minWidth: 500)
+            }
+            footerBar
         }
+        .sheet(isPresented: $showSettings) { SettingsSheet(cfg: $model.cfg) }
+    }
+
+    // MARK: 底部状态条：呼出提示 + 服务状态
+
+    private var footerBar: some View {
+        HStack(spacing: 8) {
+            Text("遥控器：双击 菜单 键打开此窗口")
+            Spacer()
+            Text(service.statusLine)
+            if !service.note.isEmpty {
+                Text("· \(service.note)").foregroundStyle(.orange)
+            }
+        }
+        .font(.caption2)
+        .foregroundStyle(.tertiary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
+        .background(Color(nsColor: .windowBackgroundColor))
+        .overlay(Divider(), alignment: .top)
     }
 
     // MARK: 左侧：遥控器图 + 热点
@@ -116,436 +211,255 @@ struct ConfigEditorView: View {
                     }
                     .frame(width: 46, height: 46)
                     .contentShape(Circle())
-                    .onTapGesture { selected = hs.key }
+                    .onTapGesture {
+                        selected = hs.key
+                        selectedTrigger = .tap // 换键固定回到单击位，不沿用上个键的触发选择
+                    }
                     .onHover { h in withAnimation(.easeInOut(duration: 0.12)) { hovered = h ? hs.key : nil } }
                     .position(x: 202 * hs.anchor.x, y: 410 * hs.anchor.y)
                 }
             }
             .frame(width: 202, height: 410)
-            Text(keySummary(selected))
+            Text.display(keySummary(selected))
                 .font(.caption)
                 .foregroundStyle(.secondary)
+                .padding(.horizontal, 16)
                 .padding(.bottom, 16)
         }
     }
 
     private func keySummary(_ k: RemoteKey) -> String {
-        guard let kc = cfg.keys[k.rawValue] else { return "未配置" }
-        var parts: [String] = []
-        if let a = kc.tap { parts.append("单击:" + Actions.describe(a)) }
-        if let a = kc.hold { parts.append("长按:" + Actions.describe(a)) }
-        if let a = kc.double { parts.append("双击:" + Actions.describe(a)) }
-        if let a = kc.repeatAction { parts.append("连发:" + Actions.describe(a)) }
+        guard let kc = model.cfg.keys[k.rawValue] else { return "未配置" }
+        let parts = TriggerKind.allCases.compactMap { kind -> String? in
+            guard let a = kind.action(in: kc) else { return nil }
+            return "\(kind.label) \(Pretty.action(a))"
+        }
         return parts.isEmpty ? "未配置任何动作" : parts.joined(separator: "  ")
     }
 
-    // MARK: 右侧：编辑器
+    // MARK: 右侧：触发卡 + 单编辑器
 
     private var editorPane: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
-                HStack {
-                    Text("「\(hotspots.first { $0.key == selected }?.label ?? selected.rawValue)」键")
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(spacing: 12) {
+                    Text("「\(keyLabel(selected))」键")
                         .font(.title3.weight(.semibold))
+                    if model.savedFlash {
+                        Label("已保存", systemImage: "checkmark.circle.fill")
+                            .font(.caption).foregroundStyle(.green)
+                            .transition(.opacity)
+                    }
                     Spacer()
-                    Button(savedFlash ? "已保存 ✓" : "保存配置") { save() }
-                        .disabled(savedFlash)
-                    Button("恢复默认") { cfg = Config.defaultConfig() }
+                    Button { showSettings = true } label: {
+                        Label("手感设置", systemImage: "slider.horizontal.3")
+                    }
+                    Menu {
+                        Section(service.statusLine) {}
+                        Button(service.paused ? "恢复接管" : "暂停接管") {
+                            ServiceHub.shared.onTogglePause?()
+                        }
+                        Button("重载配置") {
+                            ServiceHub.shared.onReloadConfig?()
+                        }
+                        Button("编辑配置文件…") {
+                            NSWorkspace.shared.open(Config.configURL)
+                        }
+                        Divider()
+                        Button("清理映射并退出", role: .destructive) {
+                            ServiceHub.shared.onQuit?()
+                        }
+                    } label: {
+                        Label("服务", systemImage: "ellipsis.circle")
+                    }
+                    .fixedSize()
+                    Button { resetKey() } label: {
+                        Label("恢复此键默认", systemImage: "arrow.counterclockwise")
+                    }
                 }
 
-                let kc = bindingFor(selected)
-                TriggerRow(label: "单击（未配双击时零延迟）", action: subBinding(kc, \.tap))
-                TriggerRow(label: "长按（\(cfg.settings.holdMs)ms）", action: subBinding(kc, \.hold),
-                           conflictHint: (cfg.keys[selected.rawValue]?.repeatAction != nil && cfg.keys[selected.rawValue]?.hold != nil)
-                            ? "长按与连发互斥，长按优先" : nil)
-                TriggerRow(label: "双击（\(cfg.settings.doubleMs)ms 窗口，会给单击引入延迟）", action: subBinding(kc, \.double))
-                TriggerRow(label: "长按连发（延迟 \(cfg.settings.repeatDelayMs)ms / 间隔 \(cfg.settings.repeatMs)ms）",
-                           action: subBinding(kc, \.repeatAction),
-                           conflictHint: (cfg.keys[selected.rawValue]?.repeatAction != nil && cfg.keys[selected.rawValue]?.hold != nil)
-                            ? "长按与连发互斥，长按优先" : nil)
+                if let notice {
+                    Text(notice)
+                        .font(.callout).foregroundStyle(.orange)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                HStack(spacing: 10) {
+                    ForEach(TriggerKind.allCases) { kind in
+                        // 菜单键的双击 = 系统保留手势（呼出设置），锁定不可配置
+                        let reserved = (kind == .double && selected == ServiceGesture.key)
+                        TriggerCard(kind: kind,
+                                    action: reserved ? nil : kind.action(in: currentKC),
+                                    isSelected: selectedTrigger == kind && !reserved,
+                                    systemText: reserved ? "呼出设置（系统）" : nil) {
+                            if reserved {
+                                showNotice("双击「菜单」为系统保留手势（呼出设置），不可修改")
+                            } else {
+                                selectedTrigger = kind
+                            }
+                        }
+                    }
+                }
 
                 Divider()
-                Text("全局手感参数").font(.headline)
-                timingStepper("长按判定", $cfg.settings.holdMs, 150...800, "ms")
-                timingStepper("双击窗口", $cfg.settings.doubleMs, 150...500, "ms")
-                timingStepper("连发间隔", $cfg.settings.repeatMs, 30...300, "ms")
-                timingStepper("连发起始延迟", $cfg.settings.repeatDelayMs, 150...800, "ms")
 
-                Divider()
-                Text("组合键写法：ctrl+cmd+q、arrowup、return、f5。录制：按任意组合键即录；按住单个修饰键（含 fn/🌐）0.7 秒 = 录为单修饰键动作；Esc 取消。\n⚠️ 想用 fn 键：先把 系统设置>键盘>「按下 🌐 键时」改为「什么都不做」，否则会弹表情选择。")
-                    .font(.caption).foregroundStyle(.secondary)
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                // 编辑上下文 = (键, 触发位)：一换整体重置，
+                // 预览/录制/折叠面板等本地状态不会跨上下文泄漏
+                TriggerEditor(kind: selectedTrigger, action: selectedTriggerAction)
+                    .id("\(selected.rawValue)/\(selectedTrigger.rawValue)")
             }
             .padding(24)
         }
+        .animation(.easeInOut(duration: 0.15), value: notice)
     }
 
-    private func bindingFor(_ k: RemoteKey) -> Binding<KeyConfig> {
-        Binding(
-            get: { cfg.keys[k.rawValue] ?? KeyConfig(tap: nil, hold: nil, double: nil, repeatAction: nil) },
-            set: { cfg.keys[k.rawValue] = $0 }
-        )
+    private var currentKC: KeyConfig {
+        model.cfg.keys[selected.rawValue] ?? KeyConfig(tap: nil, hold: nil, double: nil, repeatAction: nil)
     }
 
-    private func subBinding(_ kc: Binding<KeyConfig>, _ keyPath: WritableKeyPath<KeyConfig, Action?>) -> Binding<Action?> {
-        Binding(get: { kc.wrappedValue[keyPath: keyPath] },
-                set: { var v = kc.wrappedValue; v[keyPath: keyPath] = $0; kc.wrappedValue = v })
+    /// 选中键 + 选中触发的读写入口；写入经 writeAction 处理互斥。
+    private var selectedTriggerAction: Binding<Action?> {
+        let kp = selectedTrigger.keyPath
+        return Binding(get: { currentKC[keyPath: kp] }, set: { writeAction($0) })
     }
 
-    private func timingStepper(_ label: String, _ value: Binding<Int>, _ range: ClosedRange<Int>, _ unit: String) -> some View {
-        HStack {
-            Text(label)
-            Spacer()
-            Stepper(value: value, in: range, step: 10) {
-                Text("\(value.wrappedValue)\(unit)").monospacedDigit().frame(width: 90, alignment: .trailing)
+    /// 写入当前 (键, 触发位) 的动作；系统保留位拒写；配置长按/连发时自动清掉另一方并提示。
+    private func writeAction(_ newValue: Action?) {
+        if selected == ServiceGesture.key && selectedTrigger == .double {
+            showNotice("双击「菜单」为系统保留手势（呼出设置），不可修改")
+            return
+        }
+        var kc = currentKC
+        kc[keyPath: selectedTrigger.keyPath] = newValue
+        if newValue != nil {
+            if selectedTrigger == .hold, kc.repeatAction != nil {
+                kc.repeatAction = nil
+                showNotice("已清除连发（长按与连发互斥）")
+            } else if selectedTrigger == .repeatAction, kc.hold != nil {
+                kc.hold = nil
+                showNotice("已清除长按（连发与长按互斥）")
             }
         }
-        .frame(maxWidth: 360, alignment: .leading)
+        model.cfg.keys[selected.rawValue] = kc
     }
 
-    private func save() {
-        if let data = try? JSONEncoder.pretty.encode(cfg) {
-            try? FileManager.default.createDirectory(at: Config.configDir, withIntermediateDirectories: true)
-            try? data.write(to: Config.configURL, options: .atomic)
-            // 文件监听会自动热加载到引擎；这里直接闪提示
-            savedFlash = true
-            DispatchQueue.main.asyncAfter(deadline: .now() + 1.2) { savedFlash = false }
+    private func keyLabel(_ k: RemoteKey) -> String {
+        hotspots.first { $0.key == k }?.label ?? k.rawValue
+    }
+
+    private func resetKey() {
+        model.cfg.keys[selected.rawValue] = Config.defaultConfig().keys[selected.rawValue]
+        showNotice("「\(keyLabel(selected))」已恢复出厂键位")
+    }
+
+    private func showNotice(_ text: String) {
+        notice = text
+        let token = UUID()
+        noticeToken = token
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2.5) {
+            if noticeToken == token { notice = nil }
         }
     }
 }
 
-// MARK: - 单个触发位编辑
+// MARK: - 触发卡（右上排，摘要 + 点选）
 
-struct TriggerRow: View {
-    let label: String
-    @Binding var action: Action?
-    var conflictHint: String? = nil
-    @State private var recording = false
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack {
-                Toggle(isOn: Binding(
-                    get: { action != nil },
-                    set: { action = $0 ? Action.none : nil })) {
-                    Text(label).font(.body.weight(.medium))
-                }
-                .toggleStyle(.switch)
-                .frame(maxWidth: 460, alignment: .leading)
-            }
-            if let hint = conflictHint {
-                Text(hint).font(.caption).foregroundStyle(.orange)
-            }
-            if action != nil {
-                ActionEditor(action: Binding(
-                    get: { action ?? Action.none },
-                    set: { action = $0 }))
-                    .padding(.leading, 8)
-            }
-        }
-        .padding(12)
-        .background(Color(nsColor: .controlBackgroundColor))
-        .clipShape(RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(Color(nsColor: .separatorColor).opacity(0.5)))
-    }
-}
-
-struct ActionEditor: View {
-    @Binding var action: Action
-    @State private var recording = false
-    @State private var mods: Set<String> = []
-    @State private var mainKey: String = ""
-
-    // 显示名 -> 键值（键值与 Actions.codes 表一致）
-    static let modOrder = ["ctrl", "alt", "shift", "cmd", "fn"]
-    static let commonKeys: [(label: String, value: String)] = [
-        ("esc", "esc"), ("↩", "return"), ("⌫", "delete"), ("tab", "tab"), ("space", "space"),
-        ("←", "arrowleft"), ("↑", "arrowup"), ("↓", "arrowdown"), ("→", "arrowright"),
-        ("home", "home"), ("end", "end"), ("pg↑", "pageup"), ("pg↓", "pagedown"),
-        ("任务", "missioncontrol"), ("启动台", "launchpad"),
-    ] + (1...12).map { ("f\($0)", "f\($0)") }
+struct TriggerCard: View {
+    let kind: TriggerKind
+    let action: Action?
+    let isSelected: Bool
+    var systemText: String? = nil
+    let onClick: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(spacing: 10) {
-                Picker("类型", selection: Binding(
-                    get: { action.type },
-                    set: { action.type = $0 })) {
-                    Text("按键").tag("key")
-                    Text("媒体键").tag("media")
-                    Text("鼠标").tag("mouse")
-                    Text("打开App").tag("open")
-                    Text("Shell").tag("shell")
-                    Text("无动作").tag("none")
-                }
-                .pickerStyle(.menu)
-                .frame(width: 110)
-
-                switch action.type {
-                case "key": keyEditor
-                case "media": mediaEditor
-                case "mouse": mouseEditor
-                case "open": openEditor
-                case "shell": shellEditor
-                default: EmptyView()
-                }
-            }
-            if action.type == "key" { keyPalette }
-        }
-    }
-
-    // MARK: 按键编辑（录入框 + 录制）
-
-    private var keyEditor: some View {
-        HStack(spacing: 10) {
-            TextField("如 ctrl+cmd+q", text: nonOpt($action.combo))
-                .textFieldStyle(.roundedBorder)
-                .frame(width: 190)
-                .onSubmit { parse(action.combo ?? "") }
-                .dropDestination(for: String.self) { items, _ in
-                    guard let v = items.first else { return false }
-                    applyChip(v)
-                    return true
-                }
-            Button(recording ? "● 录制中…（Esc 取消）" : "🎙 录制") {
-                if recording { ComboRecorder.shared.stop(); recording = false; return }
-                recording = true
-                ComboRecorder.shared.record { combo in
-                    recording = false
-                    if let c = combo { action.combo = c }
-                }
-            }
-        }
-    }
-
-    // 芯片面板：修饰键（点选/拖入=切换）+ 常用键（点选/拖入=设为主键）
-    private var keyPalette: some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(spacing: 6) {
-                ForEach(Self.modOrder, id: \.self) { m in
-                    chip(m, active: mods.contains(m)) { toggleMod(m) }
-                }
-                Spacer()
-            }
-            LazyVGrid(columns: Array(repeating: GridItem(.fixed(46), spacing: 4), count: 10),
-                      alignment: .leading, spacing: 4) {
-                ForEach(Self.commonKeys, id: \.value) { k in
-                    chip(k.label, active: mainKey == k.value) { setMain(k.value) }
-                }
-            }
-            Text("点选或拖入输入框组合；修饰键按住录制 0.7s = 单修饰键")
-                .font(.caption2).foregroundStyle(.tertiary)
-        }
-        .padding(8)
-        .background(Color(nsColor: .controlBackgroundColor).opacity(0.6))
-        .clipShape(RoundedRectangle(cornerRadius: 8))
-        .dropDestination(for: String.self) { items, _ in
-            guard let v = items.first else { return false }
-            applyChip(v)
-            return true
-        }
-        .onAppear { parse(action.combo ?? "") }
-        .onChange(of: action.combo) { _, new in parse(new ?? "") }
-    }
-
-    private func chip(_ label: String, active: Bool, onClick: @escaping () -> Void) -> some View {
         Button(action: onClick) {
-            Text(label)
-                .font(.system(size: 11, weight: active ? .semibold : .regular))
-                .padding(.horizontal, 7).padding(.vertical, 3)
-                .background(active ? Color.accentColor.opacity(0.30) : Color(nsColor: .quaternaryLabelColor).opacity(0.5))
-                .overlay(Capsule().stroke(active ? Color.accentColor : .clear, lineWidth: 1))
-                .clipShape(Capsule())
+            VStack(alignment: .leading, spacing: 5) {
+                HStack(spacing: 6) {
+                    Circle()
+                        .fill((systemText != nil || action != nil) ? Color.accentColor
+                                                                   : Color(nsColor: .quaternaryLabelColor))
+                        .frame(width: 6, height: 6)
+                    Text(kind.label).font(.subheadline.weight(.semibold))
+                    if systemText != nil {
+                        Image(systemName: "lock.fill")
+                            .font(.caption2).foregroundStyle(.secondary)
+                    }
+                }
+                Text.display(systemText ?? Pretty.action(action))
+                    .font(.callout)
+                    .foregroundStyle((systemText != nil || action != nil) ? .primary : .tertiary)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(12)
+            .background(isSelected ? Color.accentColor.opacity(0.08)
+                                   : Color(nsColor: .controlBackgroundColor))
+            .overlay(RoundedRectangle(cornerRadius: 10, style: .continuous)
+                .stroke(isSelected ? Color.accentColor : Color(nsColor: .separatorColor).opacity(0.5),
+                        lineWidth: isSelected ? 1.5 : 1))
+            .clipShape(RoundedRectangle(cornerRadius: 10, style: .continuous))
         }
         .buttonStyle(.plain)
-        .onDrag { NSItemProvider(object: label as NSString) }
-    }
-
-    // MARK: 芯片状态 <-> combo 字符串 同步
-
-    private func applyChip(_ label: String) {
-        let value = Self.commonKeys.first { $0.label == label }?.value ?? label
-        if Self.modOrder.contains(value) { toggleMod(value) } else { setMain(value) }
-    }
-
-    private func toggleMod(_ m: String) {
-        if mods.contains(m) { mods.remove(m) } else { mods.insert(m) }
-        rebuild()
-    }
-
-    private func setMain(_ k: String) {
-        mainKey = (mainKey == k) ? "" : k
-        rebuild()
-    }
-
-    private func rebuild() {
-        let ordered = Self.modOrder.filter { mods.contains($0) }
-        action.combo = mainKey.isEmpty ? ordered.joined(separator: "+")
-                                       : (ordered + [mainKey]).joined(separator: "+")
-    }
-
-    private func parse(_ combo: String) {
-        let parts = combo.split(separator: "+").map(String.init).map { $0.lowercased() }
-        var newMods: Set<String> = []
-        var newMain = ""
-        for (i, p) in parts.enumerated() {
-            if Self.modOrder.contains(p) && i < parts.count - 1 { newMods.insert(p) }
-            else if Self.modOrder.contains(p) && parts.count == 1 { newMods.insert(p) }
-            else { newMain = p }
-        }
-        if newMods != mods { mods = newMods }
-        if newMain != mainKey { mainKey = newMain }
-    }
-
-    // MARK: 其他类型
-
-    private var mediaEditor: some View {
-        Picker("", selection: nonOpt($action.name)) {
-            ForEach(["volume_up", "volume_down", "mute", "brightness_up",
-                     "brightness_down", "play", "next", "prev"], id: \.self) { Text($0) }
-        }
-        .frame(width: 220)
-    }
-
-    private var mouseEditor: some View {
-        Picker("", selection: nonOpt($action.name)) {
-            Text("左键").tag("left"); Text("右键").tag("right")
-        }
-        .frame(width: 120)
-    }
-
-    private var openEditor: some View {
-        HStack(spacing: 10) {
-            if let n = action.name, !n.isEmpty {
-                Image(systemName: "app").foregroundStyle(.secondary)
-                Text(n).lineLimit(1).truncationMode(.middle)
-            } else {
-                Text("未选择 App").foregroundStyle(.tertiary)
-            }
-            Button("选择…") {
-                let panel = NSOpenPanel()
-                panel.allowedContentTypes = [UTType.application]
-                panel.directoryURL = URL(fileURLWithPath: "/Applications")
-                panel.canChooseDirectories = false
-                panel.allowsMultipleSelection = false
-                panel.canChooseFiles = true
-                if panel.runModal() == .OK, let url = panel.url {
-                    action.name = url.deletingPathExtension().lastPathComponent
-                }
-            }
-            if action.name?.isEmpty == false {
-                Button { action.name = "" } label: { Image(systemName: "xmark.circle.fill") }
-                    .buttonStyle(.plain).foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private var shellEditor: some View {
-        TextField("命令", text: nonOpt($action.command))
-            .textFieldStyle(.roundedBorder)
-            .frame(width: 320)
-    }
-
-    private func nonOpt(_ binding: Binding<String?>) -> Binding<String> {
-        Binding(get: { binding.wrappedValue ?? "" }, set: { binding.wrappedValue = $0 })
     }
 }
 
-// MARK: - 真键盘组合键录制（listen-only CGEventTap，10 秒超时；裸 Esc 取消）
-// 修饰键（含 fn/🌐）按住不动 0.7 秒 = 录为单修饰键动作。
-// 注意：系统默认"按下🌐键=显示表情"，需在 系统设置>键盘 里改为"什么都不做"。
+// MARK: - 手感设置 Sheet（从主界面移出的全局参数）
 
-final class ComboRecorder {
-    static let shared = ComboRecorder()
-    private var tap: CFMachPort?
-    private var source: CFRunLoopSource?
-    private var timeout: DispatchWorkItem?
-    private var holdCheck: DispatchWorkItem?
-    private var onDone: ((String?) -> Void)?
-    private var lastFlags: CGEventFlags = []
+struct SettingsSheet: View {
+    @Binding var cfg: Config
+    @Environment(\.dismiss) private var dismiss
 
-    static let interest: CGEventMask =
-        CGEventMask(1 << CGEventType.keyDown.rawValue)
-        | CGEventMask(1 << CGEventType.flagsChanged.rawValue)
-
-    static func modNames(in flags: CGEventFlags) -> [String] {
-        var names: [String] = []
-        if flags.contains(.maskControl) { names.append("ctrl") }
-        if flags.contains(.maskAlternate) { names.append("alt") }
-        if flags.contains(.maskShift) { names.append("shift") }
-        if flags.contains(.maskCommand) { names.append("cmd") }
-        if flags.contains(.maskSecondaryFn) { names.append("fn") }
-        return names
-    }
-
-    static func flagFor(_ name: String) -> CGEventFlags? {
-        Actions.modifierMasks[name]
-    }
-
-    func record(_ completion: @escaping (String?) -> Void) {
-        stop()
-        onDone = completion
-        lastFlags = CGEventSource.flagsState(.hidSystemState)
-        guard let t = CGEvent.tapCreate(
-            tap: .cgSessionEventTap, place: .headInsertEventTap, options: .listenOnly,
-            eventsOfInterest: Self.interest,
-            callback: { _, type, event, ctx in
-                let r = Unmanaged<ComboRecorder>.fromOpaque(ctx!).takeUnretainedValue()
-                r.handle(type, event)
-                return Unmanaged.passUnretained(event)
-            },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()) else {
-            completion(nil)
-            return
-        }
-        tap = t
-        source = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, t, 0)
-        CFRunLoopAddSource(CFRunLoopGetMain(), source, .commonModes)
-        CGEvent.tapEnable(tap: t, enable: true)
-        let w = DispatchWorkItem { [weak self] in self?.finish(nil) }
-        timeout = w
-        DispatchQueue.main.asyncAfter(deadline: .now() + 10, execute: w)
-    }
-
-    func stop() { finish(nil) }
-
-    private func finish(_ combo: String?) {
-        holdCheck?.cancel(); holdCheck = nil
-        if let t = tap {
-            CGEvent.tapEnable(tap: t, enable: false)
-            if let s = source { CFRunLoopRemoveSource(CFRunLoopGetMain(), s, .commonModes) }
-        }
-        tap = nil; source = nil
-        timeout?.cancel(); timeout = nil
-        onDone?(combo)
-        onDone = nil
-    }
-
-    private func handle(_ type: CGEventType, _ e: CGEvent) {
-        holdCheck?.cancel(); holdCheck = nil
-
-        if type == .flagsChanged {
-            let f = e.flags
-            let newMods = Self.modNames(in: f.subtracting(lastFlags))
-            lastFlags = f
-            if let m = newMods.first, let mask = Self.flagFor(m) {
-                // 按住不动 0.7s：录为裸修饰键
-                let w = DispatchWorkItem { [weak self] in
-                    guard let self else { return }
-                    let cur = CGEventSource.flagsState(.hidSystemState)
-                    if cur.contains(mask) { self.finish(m) }
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Text("全局手感参数").font(.headline)
+                    Spacer()
+                    Button("完成") { dismiss() }
                 }
-                holdCheck = w
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.7, execute: w)
-            }
-            return
-        }
+                timingStepper("长按判定", "超过该时长算长按", $cfg.settings.holdMs, 150...800)
+                timingStepper("双击窗口", "两次单击在该窗口内算双击；配置双击后，单击会延迟到窗口结束才触发", $cfg.settings.doubleMs, 150...500)
+                timingStepper("连发间隔", "连发时相邻两次动作的间隔", $cfg.settings.repeatMs, 30...300)
+                timingStepper("连发起始延迟", "按住超过该时长后开始连发", $cfg.settings.repeatDelayMs, 150...800)
 
-        // keyDown：修饰键（含 fn）+ 主键
-        let code = CGKeyCode(truncatingIfNeeded: e.getIntegerValueField(.keyboardEventKeycode))
-        guard let name = Actions.codeNames[code] else { return }
-        let mods = Self.modNames(in: e.flags)
-        if name == "esc" && mods.isEmpty { finish(nil); return } // 裸 Esc = 取消
-        finish((mods.filter { $0 != name } + [name]).joined(separator: "+"))
+                Divider()
+                Text.display("组合键写法：ctrl+cmd+q、arrowup、return、f5。\n⚠️ 想用 fn 键：先把 系统设置>键盘>「按下 🌐 键时」改为「什么都不做」，否则会弹表情选择。")
+                    .font(.caption).foregroundStyle(.secondary)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Divider()
+                HStack {
+                    Spacer()
+                    Button("恢复全部默认…", role: .destructive) { confirmResetAll() }
+                }
+            }
+            .padding(20)
+        }
+        .frame(width: 460)
+    }
+
+    private func timingStepper(_ label: String, _ caption: String, _ value: Binding<Int>, _ range: ClosedRange<Int>) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(label)
+                Spacer()
+                Stepper(value: value, in: range, step: 10) {
+                    Text("\(value.wrappedValue) ms").monospacedDigit()
+                }
+            }
+            Text(caption).font(.caption2).foregroundStyle(.secondary)
+        }
+    }
+
+    private func confirmResetAll() {
+        let alert = NSAlert()
+        alert.messageText = "恢复全部默认键位？"
+        alert.informativeText = "所有按键的自定义配置与手感参数将被清除，此操作不可撤销。"
+        alert.addButton(withTitle: "恢复默认")
+        alert.addButton(withTitle: "取消")
+        if alert.runModal() == .alertFirstButtonReturn {
+            cfg = Config.defaultConfig()
+        }
     }
 }

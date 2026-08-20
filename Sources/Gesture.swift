@@ -23,6 +23,8 @@ final class GestureEngine {
     var configs: [RemoteKey: KeyConfig]
     /// kind: tap / hold / repeat / double
     var fire: (Action, RemoteKey, String) -> Void
+    /// 系统保留手势（双击菜单 = 呼出设置）：命中时走此回调，不执行用户配置的动作
+    var onSystemGesture: ((RemoteKey, String) -> Void)?
 
     /// hold 配置为裸修饰键（如 fn）时进入"按住"模式：holdReached 发 down，keyUp 发 up
     private var heldModifiers: [RemoteKey: String] = [:]
@@ -111,13 +113,19 @@ final class GestureEngine {
         s.repeatTask?.cancel(); s.repeatTask = nil
         guard !s.holdFired else { return }
 
-        // 双击判定：只影响配置了 double 的键（其余键 tap 零延迟直发）
-        if configs[k]?.double != nil {
+        // 双击判定：只影响配置了 double 的键（其余键 tap 零延迟直发）；
+        // 系统保留键（双击菜单=呼出设置）强制走双击窗口，命中即走系统回调
+        let reserved = (k == ServiceGesture.key)
+        if configs[k]?.double != nil || reserved {
             let now = DispatchTime.now()
             if let last = s.lastTapAt,
                msBetween(last, now) < timings.doubleMs {
                 s.lastTapAt = nil
-                fire(configs[k]!.double!, k, "double")
+                if reserved {
+                    onSystemGesture?(k, "double")
+                } else {
+                    fire(configs[k]!.double!, k, "double")
+                }
                 return
             }
             s.lastTapAt = now
