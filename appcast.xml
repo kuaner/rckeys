@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<rss version="2.0" xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" xmlns:dc="http://purl.org/dc/elements/1.1/">
+  <channel>
+    <title>RCKeys</title>
+    <link>https://kuaner.github.io/rckeys/appcast.xml</link>
+    <description>RCKeys Updates</description>
+    <language>zh-CN</language>
+    <item>
+      <title>RCKeys 0.2.0</title>
+      <pubDate>Thu, 20 Aug 2026 03:53:30 +0000</pubDate>
+      <enclosure
+        url="https://github.com/kuaner/rckeys/releases/download/v0.2.0/RCKeys-0.2.0-universal.dmg"
+        sparkle:version="0.2.0"
+        sparkle:shortVersionString="0.2.0"
+        sparkle:edSignature="FQHyrVgKX+zg3c/SON2fMfM1m6iUPGM1q5lkwHdQmeDMrqQeGurkXPitnDbm2hKpG2XJb7YmqB3O6+RawOdNCw=="
+        length="4421502"
+        type="application/octet-stream"
+      />
+      <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+    </item>
+  </channel>
+</rss>
