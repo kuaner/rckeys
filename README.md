@@ -27,7 +27,7 @@ RC003 ──BLE──▶ macOS
 ## 快速开始
 
 ```bash
-./build.sh              # 构建 + 自检
+./build.sh              # 构建（单元测试：swift test）
 .build/rckeys --test    # 12 秒试运行：应用映射、解码打印按键、自动恢复
 .build/rckeys           # 后台常驻服务（无菜单栏图标；首次请求两项权限）
 .build/rckeys --fix     # 异常退出后清理残留映射

@@ -10,12 +10,6 @@ import Carbon.HIToolbox
 let args = Array(CommandLine.arguments.dropFirst())
 setvbuf(stdout, nil, _IONBF, 0) // nohup 场景下日志实时落盘
 
-/// 版本单一来源：打包构建读 Info.plist（build_app.sh 注入）；
-/// 开发构建回退硬编码（与 build_app.sh 的 VERSION 默认值保持同步）
-enum AppInfo {
-    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.2.2"
-}
-
 // ---- CLI 子命令 ----
 if args.contains("--fix") {
     // 清理崩溃残留的哑化映射
@@ -33,36 +27,6 @@ if args.contains("--help") {
     配置文件:  \(Config.configURL.path)
     """)
     exit(0)
-}
-
-// ---- 纯逻辑自检：报告解析 / 配置默认值 ----
-if args.contains("--self-test") {
-    var failed = 0
-    func expect(_ cond: Bool, _ name: String) {
-        print("\(cond ? "✅" : "❌") \(name)")
-        if !cond { failed += 1 }
-    }
-    // 1) usage 表完备：13 键一一对应
-    expect(Set(RC003.usageByKey.values) == Set(RemoteKey.allCases), "usage 表覆盖 13 键")
-    // 2) 哑化 payload 含 12 键且不含 back(0xF1)
-    expect(Remap.neuters.count == 12 && !Remap.neuters.contains(0xF1), "哑化表 12 键、排除 0xF1")
-    expect(Remap.payload.contains("0x700000052") && Remap.payload.contains("0x70000003E"), "payload 生成")
-    // 3) 默认配置可编码往返
-    let cfg = Config.defaultConfig()
-    let data = try! JSONEncoder.pretty.encode(cfg)
-    let back = try! JSONDecoder().decode(Config.self, from: data)
-    expect(back == cfg, "默认配置 JSON 往返一致")
-    expect(back.keys.count == RemoteKey.allCases.count, "默认配置覆盖 13 键")
-    // 4) 键码表常用项
-    expect(Actions.codes["return"] == CGKeyCode(kVK_Return)
-           && Actions.codes["arrowup"] == CGKeyCode(kVK_UpArrow)
-           && Actions.codes["a"] == CGKeyCode(kVK_ANSI_A), "键码表")
-    // 5) 媒体键
-    expect(Actions.mediaKeys["volume_up"] == 0 && Actions.mediaKeys["mute"] == 7, "媒体键码")
-    // 6) UI 可读描述与键帽解析（修饰键 = 符号 + 名称，与实体键盘印字一致）
-    expect(Pretty.action(.key("ctrl+cmd+q")) == "⌃ control ⌘ command Q" && Pretty.action(.media("volume_up")) == "音量+", "动作可读描述")
-    expect(Pretty.comboParts("cmd+shift+tab") == ["⌘ command", "⇧ shift", "⇥"] && Pretty.comboParts("fn") == ["🌐 fn"], "键帽解析")
-    exit(failed == 0 ? 0 : 1)
 }
 
 // ---- 试运行模式：应用映射 → 监听打印 → 恢复 ----

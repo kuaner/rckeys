@@ -1,5 +1,11 @@
 import Foundation
 
+/// 版本单一来源：打包构建读 Info.plist（build_app.sh 注入）；
+/// 开发构建回退硬编码（与 build_app.sh 的 VERSION 默认值保持同步）
+enum AppInfo {
+    static let version = (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "0.2.2"
+}
+
 // 13 个逻辑键（与 RC003 的 HID usage 对应关系见 HID.swift）
 enum RemoteKey: String, CaseIterable {
     case up, down, left, right, ok

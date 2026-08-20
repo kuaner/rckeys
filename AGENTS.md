@@ -7,16 +7,21 @@ RCKeys：小米蓝牙遥控器 2 Pro（RC003）的 macOS 按键自定义工具�
 ## 构建与测试
 
 ```bash
-./build.sh                # swiftc -O Sources/*.swift -o .build/rckeys + 跑 --self-test
-.build/rckeys --self-test  # 纯逻辑自检（usage 表、配置默认值），无需设备
-.build/rckeys --test       # 12 秒真机试运行：应用哑化、打印解码、自动恢复
-.build/rckeys --fix        # 清理 hidutil 残留映射（调试崩残留时用）
-scripts/build_app.sh release  # 打包 RCKeys.app（通用二进制）+ ad-hoc 签名 + DMG
+swift test                  # 单元测试（Swift Testing）：引擎虚拟时钟边缘用例 + 模型层
+./build.sh                  # swiftc -O 编译 CLI（单模块直编，不走 SPM）
+.build/rckeys --test        # 12 秒真机试运行：应用哑化、打印解码、自动恢复
+.build/rckeys --fix         # 清理 hidutil 残留映射（调试崩残留时用）
+scripts/build_app.sh release  # 打包 RCKeys.app（通用二进制）+ 签名公证 + DMG
 swift scripts/make_icon.swift # 重新生成应用图标 assets/AppIcon.icns
 ```
 
-- 无 Xcode 工程、无 SwiftPM、无 lint/格式化配置；只需 Command Line Tools。
-- `.build/`、`dist/` 已 gitignore。发布：push tag `v*` 触发 GitHub Actions 出 Release。
+- 目录结构：`Sources/RCKeys/` 为逻辑库（SPM 测试目标，`@testable` 免 public）；
+  `Sources/main.swift` 为 CLI/App 入口。生产构建用 swiftc 把两者编成**单一模块**
+  （不需要 SPM）；`Package.swift` 仅供 `swift test`。语言模式固定 v5。
+- 手势引擎的时钟可注入（`GestureEngine.Scheduler`）：生产主队列真实时钟，
+  测试用 `VirtualClock` 确定性推进——改引擎时序逻辑必须补对应测试。
+- 无 Xcode 工程、无 lint；只需 Command Line Tools。`.build/`、`dist/` 已 gitignore。
+- 发布：push tag `v*` 触发 GitHub Actions 出 Release；push/PR 由 ci.yml 跑 `swift test` + `./build.sh`。
 - 注释、文档、UI 文案均为中文，保持一致。
 
 ## 架构（核心链路，勿破坏）

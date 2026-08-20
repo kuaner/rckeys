@@ -10,5 +10,7 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v5
-      - name: Build & self-test
+      - name: Unit tests
+        run: swift test
+      - name: Build CLI binary
         run: ./build.sh

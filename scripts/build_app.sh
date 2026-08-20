@@ -44,8 +44,8 @@ build() {
     log "=== 构建 ${APP_NAME} v${VERSION}（arm64 + x86_64 通用） ==="
     local fw="-F ${SPARKLE_CACHE} -framework Sparkle -Xlinker -rpath -Xlinker @executable_path/../Frameworks"
     mkdir -p .build/universal
-    swiftc -O -target "arm64-apple-macos${MIN_MACOS}" ${fw} Sources/*.swift -o .build/universal/rckeys-arm64
-    swiftc -O -target "x86_64-apple-macos${MIN_MACOS}" ${fw} Sources/*.swift -o .build/universal/rckeys-x64
+    swiftc -O -target "arm64-apple-macos${MIN_MACOS}" ${fw} Sources/RCKeys/*.swift Sources/main.swift -o .build/universal/rckeys-arm64
+    swiftc -O -target "x86_64-apple-macos${MIN_MACOS}" ${fw} Sources/RCKeys/*.swift Sources/main.swift -o .build/universal/rckeys-x64
     lipo -create .build/universal/rckeys-arm64 .build/universal/rckeys-x64 \
         -output .build/universal/rckeys-universal
 
