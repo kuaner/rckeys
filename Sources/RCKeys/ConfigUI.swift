@@ -22,6 +22,8 @@ import Combine
                 backing: .buffered, defer: false)
             w.title = "RCKeys 按键配置 · v\(AppInfo.version)"
             w.isReleasedWhenClosed = false
+            // 每次启动居中——contentRect 原点 (0,0) 在 AppKit 坐标系是左下角
+            w.center()
             w.contentView = NSHostingView(rootView: ConfigEditorView())
             window = w
         }
