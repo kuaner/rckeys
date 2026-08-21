@@ -7,7 +7,7 @@ set -euo pipefail
 
 APP_NAME="RCKeys"
 BUNDLE_ID="com.kuaner.rckeys"
-VERSION="${VERSION:-0.3.2}"
+VERSION="${VERSION:-0.3.3}"
 MIN_MACOS="14.0"
 DIST="dist"
 APP_DIR="${DIST}/${APP_NAME}.app"
