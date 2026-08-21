@@ -63,6 +63,8 @@ public enum AutoStart {
             <key>ProgramArguments</key>
             <array><string>\(exe.path)</string></array>
             <key>RunAtLoad</key><true/>
+            <key>EnvironmentVariables</key>
+            <dict><key>RCKEYS_SILENT_START</key><string>1</string></dict>
             <key>KeepAlive</key><dict><key>SuccessfulExit</key><false/></dict>
             <key>StandardOutPath</key><string>\(NSHomeDirectory())/Library/Logs/rckeys.log</string>
             <key>StandardErrorPath</key><string>\(NSHomeDirectory())/Library/Logs/rckeys.log</string>

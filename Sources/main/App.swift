@@ -146,8 +146,11 @@ enum RCKeysApp {
         }
         watchSignals()
 
-        // 点击应用图标启动 = 服务 + 设置窗口；run loop 起来后展示
-        DispatchQueue.main.async { ConfigWindowController.shared.show() }
+        // 点击应用图标启动 = 服务 + 设置窗口；开机自启（LaunchAgent 注入
+        // RCKEYS_SILENT_START）= 静默后台，不弹窗
+        if ProcessInfo.processInfo.environment["RCKEYS_SILENT_START"] != "1" {
+            DispatchQueue.main.async { ConfigWindowController.shared.show() }
+        }
 
         print("rckeys 已启动（后台服务，无菜单栏/Dock 图标）。长按 菜单 键或再次打开 App 可打开设置。配置: \(Config.configURL.path)")
         app.run()

@@ -46,7 +46,8 @@ RC003 ──BLE──▶ macOS
 
 **开机自启**：App 启动时自动安装 LaunchAgent
 （`~/Library/LaunchAgents/com.kuaner.rckeys.plist`）——登录自启 + 崩溃自动拉起
-（干净退出不会被拉起）；日志写入 `~/Library/Logs/rckeys.log`。开发用裸二进制运行不安装。
+（干净退出不会被拉起）；**开机自启为静默启动**，不弹设置窗口，用户手动打开 App 才弹。
+日志写入 `~/Library/Logs/rckeys.log`。开发用裸二进制运行不安装。
 取消自启：退出 App 后删除该 plist 即可。
 
 **不要与其他接管工具（Remote Mic 等）同时运行。**
