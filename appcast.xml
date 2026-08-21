@@ -6,14 +6,14 @@
     <description>RCKeys Updates</description>
     <language>zh-CN</language>
     <item>
-      <title>RCKeys 0.3.2</title>
-      <pubDate>Thu, 20 Aug 2026 13:44:26 +0000</pubDate>
+      <title>RCKeys 0.3.3</title>
+      <pubDate>Fri, 21 Aug 2026 12:58:45 +0000</pubDate>
       <enclosure
-        url="https://github.com/kuaner/rckeys/releases/download/v0.3.2/RCKeys-0.3.2-universal.dmg"
-        sparkle:version="0.3.2"
-        sparkle:shortVersionString="0.3.2"
-        sparkle:edSignature="NHFRbNRS1Izwup9xK9hvXVPGFx+pYN7lgaCX1sEpPAAP15ZtIxQeWmiq0bW0IRddE34AlwjpNE/Lvupmx4suDQ=="
-        length="4506302"
+        url="https://github.com/kuaner/rckeys/releases/download/v0.3.3/RCKeys-0.3.3-universal.dmg"
+        sparkle:version="0.3.3"
+        sparkle:shortVersionString="0.3.3"
+        sparkle:edSignature="2l6u+sPquYjHXAHdf4E7p20VNLEmhFEoB0lEwDSf4PVUcCaEFVcSnv8z0Pau2AlxS86tlT+P9es7NlB9fTUZDg=="
+        length="4507026"
         type="application/octet-stream"
       />
       <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
